@@ -1,81 +1,85 @@
 import networkx as nx
 import plotly.graph_objects as go
 
+class CityGraph:
+    def __init__(self):
+        self.graph = self._build_graph()
+
+    def _build_graph(self):
+        """Builds and returns an undirected networkx graph representing the smart city."""
+        G = nx.Graph()
+        
+        # Define nodes with arbitrary (x,y) coordinates for plotting purposes
+        nodes = {
+            "downtown": (0, 0),
+            "harbor": (2, -2),
+            "industrial": (4, 1),
+            "sector7": (-2, 2),
+            "north_grid": (0, 4),
+            "central_park": (2, 2),
+            "westside": (-4, 0),
+            "port": (4, -3),
+            "eastside": (5, 0),
+            "suburbs": (-3, -3),
+            "midtown": (1, -1),
+            "airport": (-5, 4)
+        }
+        
+        for node, pos in nodes.items():
+            G.add_node(node, pos=pos)
+            
+        # Define edges with weight (travel time in minutes)
+        edges = [
+            ("downtown", "midtown", 3),
+            ("downtown", "central_park", 5),
+            ("downtown", "sector7", 6),
+            ("downtown", "westside", 8),
+            ("midtown", "harbor", 4),
+            ("harbor", "port", 5),
+            ("central_park", "industrial", 7),
+            ("central_park", "north_grid", 6),
+            ("sector7", "north_grid", 5),
+            ("sector7", "airport", 12),
+            ("westside", "suburbs", 10),
+            ("westside", "airport", 15),
+            ("industrial", "eastside", 4),
+            ("port", "eastside", 8),
+            ("suburbs", "midtown", 9),
+            ("north_grid", "airport", 14),
+            ("eastside", "downtown", 11)
+        ]
+        
+        for u, v, w in edges:
+            G.add_edge(u, v, weight=w)
+            
+        return G
+
+    def get_shortest_path(self, start, end):
+        """Calculates the shortest path based on travel time (weight)."""
+        try:
+            path = nx.shortest_path(self.graph, source=start, target=end, weight="weight")
+            travel_time = nx.shortest_path_length(self.graph, source=start, target=end, weight="weight")
+            return path, travel_time
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return [], float('inf')
+
+    def find_nearest_unit(self, incident_location, available_units_dict):
+        """Finds the nearest available unit to an incident location."""
+        best_unit_id = None
+        best_path = []
+        min_eta = float('inf')
+        
+        for unit_id, unit_info in available_units_dict.items():
+            path, eta = self.get_shortest_path(unit_info["location"], incident_location)
+            if eta < min_eta:
+                min_eta = eta
+                best_unit_id = unit_id
+                best_path = path
+                
+        return best_unit_id, min_eta, best_path
+
 def create_city_graph():
-    """Builds and returns an undirected networkx graph representing the smart city."""
-    G = nx.Graph()
-    
-    # Define nodes with arbitrary (x,y) coordinates for plotting purposes
-    nodes = {
-        "downtown": (0, 0),
-        "harbor": (2, -2),
-        "industrial": (4, 1),
-        "sector7": (-2, 2),
-        "north_grid": (0, 4),
-        "central_park": (2, 2),
-        "westside": (-4, 0),
-        "port": (4, -3),
-        "eastside": (5, 0),
-        "suburbs": (-3, -3),
-        "midtown": (1, -1),
-        "airport": (-5, 4)
-    }
-    
-    for node, pos in nodes.items():
-        G.add_node(node, pos=pos)
-        
-    # Define edges with weight (travel time in minutes)
-    edges = [
-        ("downtown", "midtown", 3),
-        ("downtown", "central_park", 5),
-        ("downtown", "sector7", 6),
-        ("downtown", "westside", 8),
-        ("midtown", "harbor", 4),
-        ("harbor", "port", 5),
-        ("central_park", "industrial", 7),
-        ("central_park", "north_grid", 6),
-        ("sector7", "north_grid", 5),
-        ("sector7", "airport", 12),
-        ("westside", "suburbs", 10),
-        ("westside", "airport", 15),
-        ("industrial", "eastside", 4),
-        ("port", "eastside", 8),
-        ("suburbs", "midtown", 9),
-        ("north_grid", "airport", 14),
-        ("eastside", "downtown", 11)
-    ]
-    
-    for u, v, w in edges:
-        G.add_edge(u, v, weight=w)
-        
-    return G
-
-def get_shortest_path(G, source, target):
-    """Calculates the shortest path based on travel time (weight)."""
-    try:
-        path = nx.shortest_path(G, source=source, target=target, weight="weight")
-        travel_time = nx.shortest_path_length(G, source=source, target=target, weight="weight")
-        return path, travel_time
-    except (nx.NetworkXNoPath, nx.NodeNotFound):
-        return [], float('inf')
-
-def find_nearest_unit(G, incident_location, available_units):
-    """Finds the nearest available unit to an incident location."""
-    best_unit = None
-    best_path = []
-    min_eta = float('inf')
-    
-    for unit in available_units:
-        if unit.get("status") != "available":
-            continue
-            
-        path, eta = get_shortest_path(G, unit["location"], incident_location)
-        if eta < min_eta:
-            min_eta = eta
-            best_unit = unit
-            best_path = path
-            
-    return best_unit, best_path, min_eta
+    return CityGraph()
 
 def get_graph_figure(G, active_routes=None, incident_nodes=None):
     """Generates a Plotly figure of the city graph, optionally highlighting incidents and routes."""

@@ -72,6 +72,7 @@ def fusion_agent(state):
         for inc in incidents:
             if "master_incident_id" not in inc:
                 inc["master_incident_id"] = str(uuid.uuid4())
+            inc["id"] = inc.get("master_incident_id", str(uuid.uuid4()))
                 
         reasoning_summary = f"Fusion Agent grouped {len(triage_outputs)} triaged calls into {len(incidents)} unique master incidents."
         
@@ -81,6 +82,7 @@ def fusion_agent(state):
         for t in triage_outputs:
             inc = dict(t)
             inc["master_incident_id"] = str(uuid.uuid4())
+            inc["id"] = inc.get("master_incident_id", str(uuid.uuid4()))
             inc["duplicate_count"] = 1
             inc["confidence_score"] = 0
             inc["summary"] = t.get("caller_summary", "")
