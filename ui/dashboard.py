@@ -1,6 +1,5 @@
 """CrisisGrid AI — Emergency Dispatch Dashboard."""
 import streamlit as st
-import plotly.graph_objects as go
 import pandas as pd
 import requests, json, math, random, time
 from datetime import datetime, timezone, timedelta
@@ -10,8 +9,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 # ── Import mock data ──
 from mock_data import (
-    DELHI_LOCATIONS, EDGES, MOCK_INCIDENTS, MOCK_RESOURCES,
-    MOCK_DISPATCH_LOG, MOCK_TRANSCRIPTS, AGENT_REASONING, DISPATCH_ROUTES,
+    MOCK_INCIDENTS, MOCK_RESOURCES,
+    MOCK_DISPATCH_LOG, MOCK_TRANSCRIPTS, AGENT_REASONING,
 )
 
 # ── Page config ──
@@ -291,58 +290,90 @@ with col_left:
         </div></div>""", unsafe_allow_html=True)
         if st.button(f"Select", key=f"sel_{idx}", use_container_width=True):
             st.session_state.selected_incident = inc["id"]
+            st.toast(f"🎯 Tracking {inc['id']}")
             st.rerun()
 
-# ── CENTER: City Map ──
+# ── CENTER: City Map + Incident Panel ──
+LOCATION_COORDS = {
+    "Karol Bagh": [28.6514, 77.1907], "Connaught Place": [28.6315, 77.2167],
+    "ITO": [28.6285, 77.2410], "Dwarka": [28.5921, 77.0460],
+    "Rohini": [28.7495, 77.0565], "Lajpat Nagar": [28.5700, 77.2400],
+    "Saket": [28.5244, 77.2066], "Nehru Place": [28.5491, 77.2533],
+    "Rajouri Garden": [28.6492, 77.1219], "Janakpuri": [28.6219, 77.0878],
+    "Vasant Kunj": [28.5195, 77.1539], "Chandni Chowk": [28.6506, 77.2303],
+    # City graph zone names
+    "Downtown": [28.6315, 77.2167], "downtown": [28.6315, 77.2167],
+    "Harbor": [28.6285, 77.2410], "harbor": [28.6285, 77.2410],
+    "Industrial": [28.5491, 77.2533], "industrial": [28.5491, 77.2533],
+    "Sector7": [28.6219, 77.0878], "sector7": [28.6219, 77.0878],
+    "North Grid": [28.7495, 77.0565], "north_grid": [28.7495, 77.0565],
+    "Central Park": [28.5700, 77.2400], "central_park": [28.5700, 77.2400],
+    "Westside": [28.6492, 77.1219], "westside": [28.6492, 77.1219],
+    "Port": [28.5921, 77.0460], "port": [28.5921, 77.0460],
+    "Eastside": [28.5244, 77.2066], "eastside": [28.5244, 77.2066],
+    "Suburbs": [28.5195, 77.1539], "suburbs": [28.5195, 77.1539],
+    "Midtown": [28.6506, 77.2303], "midtown": [28.6506, 77.2303],
+    "Airport": [28.5562, 77.1000], "airport": [28.5562, 77.1000],
+}
+
 with col_center:
     st.markdown('<div class="section-hdr">🗺️ Delhi Emergency Grid — Live Map</div>', unsafe_allow_html=True)
-    fig = go.Figure()
-    # Draw edges
-    for src, dst, dist in EDGES:
-        x0, y0 = DELHI_LOCATIONS[src][1], DELHI_LOCATIONS[src][0]
-        x1, y1 = DELHI_LOCATIONS[dst][1], DELHI_LOCATIONS[dst][0]
-        fig.add_trace(go.Scattergl(x=[x0, x1], y=[y0, y1], mode="lines", line=dict(color="#1E2D4A", width=1), hoverinfo="skip", showlegend=False))
-    # Highlight dispatch routes
-    sel = st.session_state.selected_incident
-    active_routes = DISPATCH_ROUTES.get(sel, []) if sel else []
-    if not active_routes:
-        for routes in DISPATCH_ROUTES.values():
-            active_routes.extend(routes)
-    for src, dst in active_routes:
-        if src in DELHI_LOCATIONS and dst in DELHI_LOCATIONS:
-            x0, y0 = DELHI_LOCATIONS[src][1], DELHI_LOCATIONS[src][0]
-            x1, y1 = DELHI_LOCATIONS[dst][1], DELHI_LOCATIONS[dst][0]
-            fig.add_trace(go.Scattergl(x=[x0, x1], y=[y0, y1], mode="lines", line=dict(color="#00D4FF", width=3), hoverinfo="skip", showlegend=False))
-    # Draw nodes
-    inc_locations = {}
+    sel_id = st.session_state.selected_incident
+    map_data = []
     for inc in st.session_state.incidents:
-        if inc["location"] in DELHI_LOCATIONS:
-            inc_locations[inc["location"]] = inc
-    node_x, node_y, node_color, node_size, node_text, node_border = [], [], [], [], [], []
-    for loc, (lat, lon) in DELHI_LOCATIONS.items():
-        node_x.append(lon)
-        node_y.append(lat)
-        if loc in inc_locations:
-            inc = inc_locations[loc]
-            c = {"CRITICAL": "#FF2D55", "MEDIUM": "#FF9500", "LOW": "#30D158"}.get(inc["severity"], "#8E9BB5")
-            node_color.append(c)
-            node_size.append(18 if inc["severity"] == "CRITICAL" else 14)
-            node_text.append(f"<b>{loc}</b><br>{type_icon(inc['type'])} {inc['type']}<br>Severity: {inc['severity']}<br>{inc['description'][:60]}")
-            node_border.append(c)
+        loc = inc.get("location", "")
+        coords = LOCATION_COORDS.get(loc)
+        if coords:
+            map_data.append({"lat": coords[0], "lon": coords[1], "incident": inc["id"], "type": inc.get("type", "")})
+    if sel_id:
+        sel_data = [m for m in map_data if m["incident"] == sel_id]
+        if sel_data:
+            df_map = pd.DataFrame(sel_data)
+            st.map(df_map, latitude="lat", longitude="lon", zoom=12, use_container_width=True)
+        elif map_data:
+            df_map = pd.DataFrame(map_data)
+            st.map(df_map, latitude="lat", longitude="lon", zoom=11, use_container_width=True)
         else:
-            node_color.append("#1E2D4A")
-            node_size.append(10)
-            node_text.append(f"<b>{loc}</b><br>No active incidents")
-            node_border.append("#8E9BB5")
-    fig.add_trace(go.Scattergl(x=node_x, y=node_y, mode="markers+text", marker=dict(size=node_size, color=node_color, line=dict(width=2, color=node_border)), text=[loc for loc in DELHI_LOCATIONS.keys()], textposition="top center", textfont=dict(size=9, color="#8E9BB5", family="Inter"), hovertext=node_text, hoverinfo="text", showlegend=False))
-    # Resource markers
-    for res in st.session_state.resources:
-        if res["status"] == "DISPATCHED" and res["location"] in DELHI_LOCATIONS:
-            lat, lon = DELHI_LOCATIONS[res["location"]]
-            icon = {"Ambulance": "🚑", "Fire Truck": "🚒", "Police Van": "🚔"}.get(res["type"], "🚗")
-            fig.add_annotation(x=lon, y=lat - 0.008, text=f"{icon}{res['id']}", showarrow=False, font=dict(size=8, color="#00D4FF", family="JetBrains Mono"), bgcolor="rgba(15,22,41,0.8)", bordercolor="#1E2D4A", borderwidth=1, borderpad=2)
-    fig.update_layout(plot_bgcolor="#0A0E1A", paper_bgcolor="#0A0E1A", margin=dict(l=0, r=0, t=0, b=0), height=460, xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[76.95, 77.35]), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[28.48, 28.80], scaleanchor="x"), hoverlabel=dict(bgcolor="#0F1629", bordercolor="#1E2D4A", font=dict(family="JetBrains Mono", size=11, color="#fff")))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.info("No incidents with mapped locations yet.")
+    elif map_data:
+        df_map = pd.DataFrame(map_data)
+        st.map(df_map, latitude="lat", longitude="lon", zoom=11, use_container_width=True)
+    else:
+        st.info("No active incidents to display on map.")
+
+    # ── Incident Control Panel ──
+    if sel_id:
+        sel_inc = next((i for i in st.session_state.incidents if i["id"] == sel_id), None)
+        if sel_inc:
+            sev = sel_inc.get('severity', 'LOW')
+            sev_color = {"CRITICAL": "#FF2D55", "MEDIUM": "#FF9500", "LOW": "#30D158"}.get(sev, "#8E9BB5")
+            units_list = sel_inc.get("units", [])
+            units_str = ", ".join(units_list) if units_list else "None assigned"
+            desc = sel_inc.get("description", "No description")
+            inc_time = sel_inc.get("time", sel_inc.get("timestamp", ""))
+            st.markdown(f"""<div style="background:#0F1629;border:1px solid {sev_color};border-radius:8px;padding:16px;margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#00D4FF;font-weight:700;">🔍 {sel_inc['id']}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{sev_color};border:1px solid {sev_color};border-radius:10px;padding:2px 10px;">{sev}</span>
+            </div>
+            <div style="color:#fff;font-weight:600;font-size:15px;margin-bottom:6px;">{type_icon(sel_inc.get('type',''))} {sel_inc.get('type','')} — {sel_inc.get('location','')}</div>
+            <div style="color:#C8D1E4;font-size:12px;margin-bottom:8px;">{desc}</div>
+            <div style="display:flex;gap:20px;font-size:11px;color:#8E9BB5;">
+            <span>🕐 {inc_time}</span>
+            <span>🚑 {units_str}</span>
+            <span>📊 Status: {sel_inc.get('status','ACTIVE')}</span>
+            </div></div>""", unsafe_allow_html=True)
+
+            # Filtered dispatch log for this incident
+            inc_dispatches = [d for d in st.session_state.dispatch_log if d.get("incident") == sel_id or d.get("incident_id") == sel_id]
+            if inc_dispatches:
+                st.markdown(f'<div style="font-size:11px;color:#8E9BB5;margin-top:8px;">📋 Dispatch entries for {sel_id}:</div>', unsafe_allow_html=True)
+                df_disp = pd.DataFrame(inc_dispatches)
+                df_disp.columns = [c.upper().replace("_"," ") for c in df_disp.columns]
+                st.dataframe(df_disp, use_container_width=True, hide_index=True, height=150)
+        if st.button("✖ Clear Selection", use_container_width=True):
+            st.session_state.selected_incident = None
+            st.rerun()
 
 # ── RIGHT: Resource Status ──
 with col_right:
@@ -376,8 +407,18 @@ st.markdown("---")
 tab1, tab2, tab3 = st.tabs(["📋 Dispatch Log", "🧠 Agent Reasoning", "📞 Raw Transcripts"])
 
 with tab1:
+    sel_filter = st.session_state.selected_incident
     if st.session_state.dispatch_log:
-        df = pd.DataFrame(st.session_state.dispatch_log)
+        if sel_filter:
+            filtered = [d for d in st.session_state.dispatch_log if d.get("incident") == sel_filter or d.get("incident_id") == sel_filter]
+            if filtered:
+                st.markdown(f'<div style="font-size:11px;color:#00D4FF;margin-bottom:6px;">Showing dispatches for {sel_filter}</div>', unsafe_allow_html=True)
+                df = pd.DataFrame(filtered)
+            else:
+                st.info(f"No dispatch entries for {sel_filter}")
+                df = pd.DataFrame(st.session_state.dispatch_log)
+        else:
+            df = pd.DataFrame(st.session_state.dispatch_log)
         df.columns = [c.upper() for c in df.columns]
         st.dataframe(df, use_container_width=True, hide_index=True, height=280)
 
