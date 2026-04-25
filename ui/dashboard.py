@@ -28,6 +28,7 @@ for k, v in [
     ("backend_online", False),
     ("new_call_flash", False),
     ("base_url", "http://localhost:8000"),
+    ("live_feed", []),
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
@@ -57,22 +58,24 @@ def transform_resources(resources, dispatch_log):
 def check_backend():
     base_url = st.session_state.base_url
     try:
-        r_inc = requests.get(f"{base_url}/incidents", timeout=2)
-        r_res = requests.get(f"{base_url}/resources", timeout=2)
-        r_log = requests.get(f"{base_url}/dispatch-log", timeout=2)
-        if r_inc.status_code == 200 and r_res.status_code == 200 and r_log.status_code == 200:
+        r = requests.get(f"{base_url}/state", timeout=2)
+        if r.status_code == 200:
             st.session_state.backend_online = True
-            
-            incidents = r_inc.json().get("incidents", [])
+            data = r.json()
+            incidents = data.get("incidents", [])
             for inc in incidents:
                 if "status" not in inc: inc["status"] = "ACTIVE"
-            st.session_state.incidents = incidents
-            
-            dispatch_log = r_log.json().get("dispatch_log", [])
-            st.session_state.dispatch_log = transform_dispatch_log(dispatch_log)
-            
-            resources = r_res.json().get("resources", [])
-            st.session_state.resources = transform_resources(resources, dispatch_log)
+            if incidents:
+                st.session_state.incidents = incidents
+            dispatch_log = data.get("dispatch_log", [])
+            if dispatch_log:
+                st.session_state.dispatch_log = dispatch_log
+            resources = data.get("resources", [])
+            if resources:
+                st.session_state.resources = resources
+            if data.get("agent_reasoning"):
+                st.session_state.agent_reasoning = data["agent_reasoning"]
+            st.session_state.live_feed = data.get("live_feed", [])
         else:
             st.session_state.backend_online = False
     except Exception:
@@ -137,12 +140,12 @@ def status_badge(s):
     return f'<span class="badge badge-{c}">{s}</span>'
 
 def type_icon(t):
-    return {"Fire":"🔥","Flood":"🌊","Earthquake":"🏚️","Accident":"💥"}.get(t,"⚠️")
+    return {"Fire":"🔥","Flood":"🌊","Earthquake":"🏚️","Accident":"💥","Medical":"🚑"}.get(t, {"fire":"🔥","flood":"🌊","earthquake":"🏚️","accident":"💥","medical":"🚑"}.get(str(t).lower(),"⚠️"))
 
 # ── TOP BAR ──
 now_ist = datetime.now(IST)
-active = sum(1 for i in st.session_state.incidents if i["status"] == "ACTIVE")
-deployed = sum(1 for r in st.session_state.resources if r["status"] == "DISPATCHED")
+active = sum(1 for i in st.session_state.incidents if i.get("status") == "ACTIVE")
+deployed = sum(1 for r in st.session_state.resources if r.get("status") == "DISPATCHED")
 calls = sum(i.get("calls_merged", 1) for i in st.session_state.incidents)
 
 st.markdown(f"""<div class="top-bar">
@@ -161,6 +164,14 @@ if not st.session_state.backend_online:
 if st.session_state.new_call_flash:
     st.markdown('<div class="flash-banner">📞 NEW CALL INCOMING — Processing through agents...</div>', unsafe_allow_html=True)
     st.session_state.new_call_flash = False
+
+# ── LIVE SYSTEM FEED ──
+if st.session_state.live_feed:
+    feed_html = '<div style="background:#080C15;border:1px solid #1E2D4A;border-radius:6px;padding:10px;margin-bottom:12px;font-family:JetBrains Mono,monospace;font-size:12px;">'
+    for evt in st.session_state.live_feed[:5]:
+        feed_html += f'<div style="color:#00D4FF;margin-bottom:4px;">{evt}</div>'
+    feed_html += '</div>'
+    st.markdown(feed_html, unsafe_allow_html=True)
 
 # ── SIDEBAR ──
 with st.sidebar:
@@ -184,42 +195,39 @@ with st.sidebar:
                 r = requests.post(f"{st.session_state.base_url}/process-call", json={"transcript": transcript_input}, timeout=30)
                 if r.status_code == 200:
                     data = r.json()
-                    if "incidents" in data:
-                        incidents = data["incidents"]
-                        for inc in incidents:
-                            if "status" not in inc: inc["status"] = "ACTIVE"
-                        st.session_state.incidents = incidents
-                        
-                    if "dispatch_log" in data:
-                        st.session_state.dispatch_log = transform_dispatch_log(data["dispatch_log"])
-                        
-                    if "resources" in data:
-                        st.session_state.resources = transform_resources(data["resources"], data.get("dispatch_log", []))
-                        
-                    if "agent_reasoning" in data:
+                    if data.get("incidents"):
+                        st.session_state.incidents = data["incidents"]
+                    if data.get("dispatch_log"):
+                        st.session_state.dispatch_log = data["dispatch_log"]
+                    if data.get("resources"):
+                        st.session_state.resources = data["resources"]
+                    if data.get("agent_reasoning"):
                         st.session_state.agent_reasoning = data["agent_reasoning"]
+                    st.session_state.live_feed = data.get("live_feed", [])
                     
+                    latest_id = st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
                     st.session_state.transcripts.append({
                         "original": transcript_input,
-                        "processed": "Processed via LangGraph backend.",
-                        "incident_id": st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
+                        "processed": f"Processed via LangGraph backend. Incident: {latest_id}",
+                        "incident_id": latest_id
                     })
                     st.success("✅ Dispatched via backend!")
                 else:
                     raise Exception("Bad response")
             except Exception:
                 new_inc = {
-                    "id": f"INC-2026-{len(st.session_state.incidents)+417:04d}",
+                    "id": f"INC-{len(st.session_state.incidents)+1:03d}",
                     "location": "Chandni Chowk",
                     "type": "Fire" if "aag" in transcript_input.lower() else "Accident" if "accident" in transcript_input.lower() else "Flood" if "pani" in transcript_input.lower() else "Earthquake",
                     "severity": "CRITICAL" if any(w in transcript_input.lower() for w in ["jaldi","critical","fas","trapped"]) else "MEDIUM",
-                    "timestamp": now_ist.strftime("%Y-%m-%d %H:%M:%S"),
-                    "description": f"New incident from 112 call",
+                    "time": now_ist.strftime("%H:%M:%S"),
+                    "description": "New incident from 112 call",
                     "calls_merged": 1,
                     "status": "ACTIVE",
+                    "units": [],
                 }
                 st.session_state.incidents.append(new_inc)
-                st.session_state.transcripts.append({"original": transcript_input, "processed": f"EMERGENCY: New incident processed from call. Location: {new_inc['location']}. Type: {new_inc['type']}. Severity: {new_inc['severity']}.", "incident_id": new_inc["id"]})
+                st.session_state.transcripts.append({"original": transcript_input, "processed": f"EMERGENCY: {new_inc['type']} at {new_inc['location']}. Severity: {new_inc['severity']}.", "incident_id": new_inc["id"]})
                 st.info("📡 Backend offline — processed with mock pipeline")
             st.rerun()
     st.markdown("---")
@@ -243,20 +251,28 @@ col_left, col_center, col_right = st.columns([1, 2, 1])
 # ── LEFT: Incident Feed ──
 with col_left:
     st.markdown('<div class="section-hdr">🔴 Live Incident Feed</div>', unsafe_allow_html=True)
-    for idx, inc in enumerate(st.session_state.incidents):
-        sev_class = inc["severity"].lower()
+    sev_order = {"CRITICAL": 0, "MEDIUM": 1, "LOW": 2}
+    sorted_incidents = sorted(st.session_state.incidents, key=lambda x: sev_order.get(x.get("severity","LOW"), 3))
+    for idx, inc in enumerate(sorted_incidents):
+        sev_class = inc.get("severity","LOW").lower()
         is_selected = st.session_state.selected_incident == inc["id"]
         border_extra = "border-color:#00D4FF!important;box-shadow:0 0 20px rgba(0,212,255,0.2);" if is_selected else ""
+        inc_time = inc.get("time", inc.get("timestamp", ""))
+        if " " in str(inc_time): inc_time = str(inc_time).split(" ")[1]
+        inc_desc = inc.get("description", "")[:80]
+        units_list = inc.get("units", [])
+        units_str = ", ".join(units_list) if units_list else "Pending"
         st.markdown(f"""<div class="incident-card {sev_class}" style="{border_extra}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#00D4FF;">{inc['id']}</span>
-        {sev_badge(inc['severity'])}
+        {sev_badge(inc.get('severity','LOW'))}
         </div>
-        <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:4px;">{type_icon(inc['type'])} {inc['type']} — {inc['location']}</div>
-        <div style="font-size:11px;color:#8E9BB5;margin-bottom:4px;">{inc['description'][:80]}</div>
+        <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:4px;">{type_icon(inc.get('type',''))} {inc.get('type','')} — {inc.get('location','')}</div>
+        <div style="font-size:11px;color:#8E9BB5;margin-bottom:4px;">{inc_desc}</div>
+        <div style="font-size:10px;color:#8E9BB5;margin-bottom:2px;">🚑 Units: {units_str}</div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:#8E9BB5;">
-        <span>🕐 {inc['timestamp'].split(' ')[1] if ' ' in inc['timestamp'] else inc['timestamp']}</span>
-        <span>📞 {inc.get('calls_merged',1)} calls merged</span>
+        <span>🕐 {inc_time}</span>
+        <span>Status: {inc.get('status','ACTIVE')}</span>
         </div></div>""", unsafe_allow_html=True)
         if st.button(f"Select", key=f"sel_{idx}", use_container_width=True):
             st.session_state.selected_incident = inc["id"]
@@ -316,18 +332,27 @@ with col_center:
 # ── RIGHT: Resource Status ──
 with col_right:
     st.markdown('<div class="section-hdr">📦 Resource Status</div>', unsafe_allow_html=True)
-    for rtype in ["Ambulance", "Fire Truck", "Police Van"]:
-        icon = {"Ambulance": "🚑", "Fire Truck": "🚒", "Police Van": "🚔"}[rtype]
-        st.markdown(f"<div style='font-size:12px;color:#8E9BB5;margin:8px 0 4px;font-weight:600;'>{icon} {rtype}s</div>", unsafe_allow_html=True)
-        for res in [r for r in st.session_state.resources if r["type"] == rtype]:
-            eta_txt = f"<span style='color:#FF9500;'>ETA: {res['eta']}</span>" if res["status"] == "DISPATCHED" else ""
-            inc_txt = f"<span style='color:#FF2D55;font-size:10px;'>→ {res['incident']}</span>" if res["status"] == "DISPATCHED" else ""
-            st.markdown(f"""<div class="resource-card">
+    type_map = {"ambulance": "🚑 Ambulances", "fire_truck": "🚒 Fire Trucks", "police": "🚔 Police Vans",
+                "Ambulance": "🚑 Ambulances", "Fire Truck": "🚒 Fire Trucks", "Police Van": "🚔 Police Vans"}
+    seen_types = []
+    for res in st.session_state.resources:
+        rtype = res.get("type", "")
+        label = type_map.get(rtype, rtype)
+        if label not in seen_types:
+            seen_types.append(label)
+            st.markdown(f"<div style='font-size:12px;color:#8E9BB5;margin:8px 0 4px;font-weight:600;'>{label}</div>", unsafe_allow_html=True)
+        status = res.get("status", "AVAILABLE")
+        eta_val = res.get("eta_display", res.get("eta", ""))
+        eta_txt = f"<span style='color:#FF9500;'>ETA: {eta_val}</span>" if status == "DISPATCHED" and eta_val else ""
+        inc_val = res.get("assigned_incident", res.get("incident", ""))
+        inc_txt = f"<span style='color:#FF2D55;font-size:10px;'>→ {inc_val}</span>" if status == "DISPATCHED" and inc_val else ""
+        loc = res.get("location", "").replace("_", " ").title()
+        st.markdown(f"""<div class="resource-card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#fff;font-weight:700;">{res['id']}</span>
-            {status_badge(res['status'])}
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#fff;font-weight:700;">{res.get('id','')}</span>
+            {status_badge(status)}
             </div>
-            <div style="font-size:11px;color:#8E9BB5;">📍 {res['location']} {eta_txt}</div>
+            <div style="font-size:11px;color:#8E9BB5;">📍 {loc} {eta_txt}</div>
             <div>{inc_txt}</div>
             </div>""", unsafe_allow_html=True)
 
