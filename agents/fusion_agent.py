@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+from datetime import datetime
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -35,6 +36,7 @@ def fusion_agent(state):
     For each master incident, add:
     - "duplicate_count": integer (how many calls reported this exact incident)
     - "confidence_score": integer (0-100, how confident you are they are the same incident)
+    - "summary": "Plain English summary combining details from all callers"
     
     Return ONLY a valid JSON object containing a single key "incidents" mapped to a list of the merged master incident objects.
     Each master incident should look like this:
@@ -89,8 +91,35 @@ def fusion_agent(state):
     agent_reasoning = state.get("agent_reasoning", {})
     agent_reasoning["fusion"] = reasoning_summary
     
+    # ── Normalize incident fields for downstream agents + dashboard ────
+    for inc in incidents:
+        # Ensure 'id' exists
+        if "id" not in inc:
+            inc["id"] = inc.get("master_incident_id", str(uuid.uuid4()))
+        # Map 'incident_type' → 'type' for the dashboard
+        if "type" not in inc and "incident_type" in inc:
+            inc["type"] = inc["incident_type"]
+        # Map 'summary' → 'description'
+        if "description" not in inc:
+            inc["description"] = inc.get("summary", inc.get("caller_summary", "Emergency incident"))
+        # Add timestamp
+        if "timestamp" not in inc:
+            inc["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Add status
+        if "status" not in inc:
+            inc["status"] = "ACTIVE"
+        # Map 'duplicate_count' → 'calls_merged'
+        if "calls_merged" not in inc:
+            inc["calls_merged"] = inc.get("duplicate_count", 1)
+        # Normalize severity to uppercase
+        if "severity" in inc:
+            inc["severity"] = inc["severity"].upper()
+
+    incident = incidents[0] if incidents else {}
+    
     return {
         "incidents": incidents,
+        "incident": incident,
         "agent_reasoning": agent_reasoning,
         "status": "Fusion Completed"
     }

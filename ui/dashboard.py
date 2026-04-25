@@ -181,7 +181,7 @@ with st.sidebar:
         if transcript_input.strip():
             st.session_state.new_call_flash = True
             try:
-                r = requests.post(f"{st.session_state.base_url}/process-call", json={"transcript": transcript_input}, timeout=10)
+                r = requests.post(f"{st.session_state.base_url}/process-call", json={"transcript": transcript_input}, timeout=30)
                 if r.status_code == 200:
                     data = r.json()
                     if "incidents" in data:

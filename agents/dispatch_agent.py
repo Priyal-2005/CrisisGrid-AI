@@ -96,6 +96,51 @@ def _build_explanation(
 # Main agent entry point
 # ---------------------------------------------------------------------------
 
+VALID_ZONES = {
+    "downtown", "harbor", "industrial", "sector7", "north_grid",
+    "central_park", "westside", "port", "eastside", "suburbs",
+    "midtown", "airport",
+}
+
+DEFAULT_ZONE = "downtown"
+
+
+def _normalize_location(location: str) -> str:
+    """Map an incident location string to a valid city-graph zone.
+
+    If the location is already a valid zone name, return it as-is.
+    Otherwise try a case-insensitive match, then fall back to
+    ``DEFAULT_ZONE`` so the dispatch can still proceed.
+    """
+    if location in VALID_ZONES:
+        return location
+
+    lower = location.lower().strip().replace(" ", "_")
+    if lower in VALID_ZONES:
+        return lower
+
+    # Keyword heuristics for common Hindi/English terms
+    _KEYWORD_MAP = {
+        "hawa": "airport",  "airport": "airport",
+        "bandargah": "harbor", "harbor": "harbor", "harbour": "harbor",
+        "port": "port",
+        "park": "central_park",
+        "factory": "industrial", "industrial": "industrial",
+        "north": "north_grid",
+        "west": "westside",
+        "east": "eastside",
+        "suburb": "suburbs",
+        "mid": "midtown",
+        "centre": "downtown", "center": "downtown", "central": "central_park",
+        "sector": "sector7",
+    }
+    for keyword, zone in _KEYWORD_MAP.items():
+        if keyword in lower:
+            return zone
+
+    return DEFAULT_ZONE
+
+
 def dispatch_agent(state: dict) -> dict:
     """Assign the nearest available resource to an incident.
 
@@ -109,11 +154,11 @@ def dispatch_agent(state: dict) -> dict:
 
     Args:
         state: LangGraph state object containing at minimum:
-            - ``incident``   – dict with keys *id*, *location*, *type*,
-              *severity*, *resources_needed* (list[str]).
+            - ``incidents``  – list of incident dicts from the Fusion Agent.
+            - ``incident``   – single dict (legacy / fallback).
             - ``resources``  – dict of all units keyed by unit ID.
-            - ``city_graph`` – a networkx-backed graph object exposing
-              ``find_nearest_unit(location, units_list)`` and
+            - ``city_graph`` – a CityGraph object exposing
+              ``find_nearest_unit(location, units_dict)`` and
               ``get_shortest_path(start, end)``.
 
     Returns:
@@ -123,13 +168,22 @@ def dispatch_agent(state: dict) -> dict:
             - ``agent_reasoning["dispatch"]`` set to an explanation string.
     """
     # ── Extract incident details ──────────────────────────────────────
-    incident: dict = state["incident"]
-    incident_id: str = incident["id"]
-    incident_location: str = incident["location"]
-    resources_needed: list[str] = incident["resources_needed"]
+    if "incidents" in state and state["incidents"]:
+        incident: dict = state["incidents"][-1]
+    elif "incident" in state and state.get("incident"):
+        incident = state["incident"]
+    else:
+        state.setdefault("agent_reasoning", {})["dispatch"] = (
+            "No incident data available — nothing to dispatch."
+        )
+        return state
 
-    resources: dict = state["resources"]
-    city_graph = state["city_graph"]
+    incident_id: str = incident.get("id", incident.get("master_incident_id", "unknown"))
+    raw_location: str = incident.get("location", "downtown")
+    resources_needed: list[str] = incident.get("resources_needed", [])
+
+    resources: dict = state.get("resources", {})
+    city_graph = state.get("city_graph")
 
     # Ensure mutable containers exist on state
     if "dispatch_log" not in state:
@@ -137,8 +191,17 @@ def dispatch_agent(state: dict) -> dict:
     if "agent_reasoning" not in state:
         state["agent_reasoning"] = {}
 
+    if city_graph is None:
+        state["agent_reasoning"]["dispatch"] = (
+            "NO CITY GRAPH - ESCALATION REQUIRED. "
+            "Cannot route without a city graph."
+        )
+        return state
+
+    # ── Validate / normalise location against graph zones ─────────────
+    incident_location = _normalize_location(raw_location)
+
     # ── Resolve the first resource need to a unit type ────────────────
-    # MVP: dispatch only one resource per call — take the first need.
     required_type: str | None = None
     for need in resources_needed:
         required_type = _resolve_unit_type(need)
@@ -168,6 +231,14 @@ def dispatch_agent(state: dict) -> dict:
         incident_location,
         available_units,
     )
+
+    if unit_id is None:
+        state["agent_reasoning"]["dispatch"] = (
+            "NO PATH AVAILABLE - ESCALATION REQUIRED. "
+            f"Could not find a valid route to location '{incident_location}' "
+            f"(original: '{raw_location}')."
+        )
+        return state
 
     # ── Calculate ETA (distance already represents travel_time in min) ─
     eta: float = float(distance)
