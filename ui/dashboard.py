@@ -27,20 +27,54 @@ for k, v in [
     ("selected_incident", None),
     ("backend_online", False),
     ("new_call_flash", False),
+    ("base_url", "http://localhost:8000"),
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
 
+def transform_dispatch_log(dispatch_log):
+    return [
+        {**d, "route": " → ".join(str(x) for x in d["route"]) if isinstance(d.get("route"), list) else d.get("route", "")}
+        for d in dispatch_log
+    ]
+
+def transform_resources(resources, dispatch_log):
+    res_list = []
+    for r in resources:
+        new_r = r.copy()
+        if new_r.get("status") == "DISPATCHED":
+            # find latest dispatch
+            unit_dispatches = [d for d in dispatch_log if d.get("unit_id") == new_r.get("id")]
+            if unit_dispatches:
+                latest = max(unit_dispatches, key=lambda x: x.get("timestamp", ""))
+                eta = latest.get("eta", 0)
+                new_r["eta"] = f"{eta:.1f} min" if isinstance(eta, (int, float)) else str(eta)
+                new_r["incident"] = latest.get("incident_id", "")
+        res_list.append(new_r)
+    return res_list
+
 # ── Check backend ──
 def check_backend():
+    base_url = st.session_state.base_url
     try:
-        r = requests.get(f"{BASE_URL}/incidents", timeout=2)
-        if r.status_code == 200:
+        r_inc = requests.get(f"{base_url}/incidents", timeout=2)
+        r_res = requests.get(f"{base_url}/resources", timeout=2)
+        r_log = requests.get(f"{base_url}/dispatch-log", timeout=2)
+        if r_inc.status_code == 200 and r_res.status_code == 200 and r_log.status_code == 200:
             st.session_state.backend_online = True
-            st.session_state.incidents = r.json()
-        r2 = requests.get(f"{BASE_URL}/resources", timeout=2)
-        if r2.status_code == 200:
-            st.session_state.resources = r2.json()
+            
+            incidents = r_inc.json().get("incidents", [])
+            for inc in incidents:
+                if "status" not in inc: inc["status"] = "ACTIVE"
+            st.session_state.incidents = incidents
+            
+            dispatch_log = r_log.json().get("dispatch_log", [])
+            st.session_state.dispatch_log = transform_dispatch_log(dispatch_log)
+            
+            resources = r_res.json().get("resources", [])
+            st.session_state.resources = transform_resources(resources, dispatch_log)
+        else:
+            st.session_state.backend_online = False
     except Exception:
         st.session_state.backend_online = False
 
@@ -132,19 +166,44 @@ if st.session_state.new_call_flash:
 with st.sidebar:
     st.markdown('<div class="logo" style="font-size:20px;margin-bottom:4px;">📡 DISPATCH CONSOLE</div>', unsafe_allow_html=True)
     st.markdown("---")
+    st.markdown('<div class="section-hdr">Connection</div>', unsafe_allow_html=True)
+    
+    def update_base_url():
+        st.session_state.base_url = st.session_state.temp_base_url
+        check_backend()
+        
+    st.text_input("BASE URL", value=st.session_state.base_url, key="temp_base_url", on_change=update_base_url)
+    
+    st.markdown("---")
     st.markdown('<div class="section-hdr">Submit 112 Call</div>', unsafe_allow_html=True)
-    transcript_input = st.text_area("Paste Hinglish transcript:", height=120, placeholder="e.g. Bhai jaldi aao, yahan aag lagi hai...")
-    if st.button("🚀 DISPATCH", use_container_width=True, type="primary"):
+    transcript_input = st.text_area("Enter emergency call transcript:", height=120, placeholder="e.g. Bhai jaldi aao, yahan aag lagi hai...")
+    if st.button("Process Call", use_container_width=True, type="primary"):
         if transcript_input.strip():
             st.session_state.new_call_flash = True
             try:
-                r = requests.post(f"{BASE_URL}/process-call", json={"transcript": transcript_input}, timeout=10)
+                r = requests.post(f"{st.session_state.base_url}/process-call", json={"transcript": transcript_input}, timeout=10)
                 if r.status_code == 200:
                     data = r.json()
-                    if "incident" in data:
-                        st.session_state.incidents.append(data["incident"])
-                    if "reasoning" in data:
-                        st.session_state.agent_reasoning = data["reasoning"]
+                    if "incidents" in data:
+                        incidents = data["incidents"]
+                        for inc in incidents:
+                            if "status" not in inc: inc["status"] = "ACTIVE"
+                        st.session_state.incidents = incidents
+                        
+                    if "dispatch_log" in data:
+                        st.session_state.dispatch_log = transform_dispatch_log(data["dispatch_log"])
+                        
+                    if "resources" in data:
+                        st.session_state.resources = transform_resources(data["resources"], data.get("dispatch_log", []))
+                        
+                    if "agent_reasoning" in data:
+                        st.session_state.agent_reasoning = data["agent_reasoning"]
+                    
+                    st.session_state.transcripts.append({
+                        "original": transcript_input,
+                        "processed": "Processed via LangGraph backend.",
+                        "incident_id": st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
+                    })
                     st.success("✅ Dispatched via backend!")
                 else:
                     raise Exception("Bad response")
@@ -174,7 +233,7 @@ with st.sidebar:
     Agents: 4 (Triage/Fusion/Dispatch/Strategy)<br>
     Resources: {len(st.session_state.resources)} units<br>
     Coverage: Delhi NCR<br>
-    API: {BASE_URL}<br>
+    API: {st.session_state.base_url}<br>
     Last sync: {now_ist.strftime("%H:%M:%S")} IST
     </div>""", unsafe_allow_html=True)
 
