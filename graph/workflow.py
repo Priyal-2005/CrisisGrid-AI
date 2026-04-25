@@ -12,11 +12,11 @@ from agents.triage_agent import triage_agent
 from agents.fusion_agent import fusion_agent
 from agents.dispatch_agent import dispatch_agent
 from agents.strategy_agent import strategy_agent
-from utils.state import CrisisState
+from utils.state import State
 
 
 # Conditional routing
-def _should_run_strategy(state: CrisisState) -> str:
+def _should_run_strategy(state: State) -> str:
     """Decide whether to run the Strategy Agent after Dispatch.
 
     If the Dispatch Agent flagged "NO AVAILABLE UNITS" the strategy
@@ -48,7 +48,7 @@ def create_workflow():
     Returns:
         A compiled LangGraph ``CompiledGraph`` ready for invocation.
     """
-    workflow = StateGraph(CrisisState)
+    workflow = StateGraph(State)
 
     # Add agent nodes
     workflow.add_node("triage", triage_agent)
@@ -94,18 +94,21 @@ def run_pipeline(
                     travel-time weighted edges.
 
     Returns:
-        Final ``CrisisState`` dict after all agents have executed.
+        Final ``State`` dict after all agents have executed.
     """
     compiled_graph = create_workflow()
 
-    initial_state: CrisisState = {
+    initial_state: State = {
         "raw_calls": [transcript],
+        "triage_outputs": [],
         "incidents": [],
-        "resources": resources,
         "dispatch_log": [],
+        "resources": resources,
         "agent_reasoning": {},
         "alerts": [],
+        "incident": {},
         "city_graph": city_graph,
+        "status": "initialized"
     }
 
     final_state = compiled_graph.invoke(initial_state)

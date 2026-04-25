@@ -2,18 +2,15 @@ import operator
 from typing import Annotated, TypedDict, List, Dict, Any
 
 class State(TypedDict):
-    # Lists that agents will append to during the workflow
     raw_calls: Annotated[List[str], operator.add]
     triage_outputs: Annotated[List[Dict[str, Any]], operator.add]
     incidents: Annotated[List[Dict[str, Any]], operator.add]
     dispatch_log: Annotated[List[Dict[str, Any]], operator.add]
-    
-    # Dictionaries overwritten or updated in place
+
     resources: Dict[str, Any]
     agent_reasoning: Dict[str, str]
-    
-    # Single graph object, as requested
-    city_graph: Any  # nx.Graph object
-    
-    # Overall pipeline status for UI tracking
+
+    alerts: List[str]
+    incident: Dict[str, Any]
+    city_graph: Any
     status: str
