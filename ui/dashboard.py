@@ -151,7 +151,7 @@ deployed = sum(1 for r in st.session_state.resources if r.get("status") == "DISP
 calls = sum(i.get("calls_merged", 1) for i in st.session_state.incidents)
 
 st.markdown(f"""<div class="top-bar">
-<div><div class="logo">🚨 CRISISGRID AI</div><div class="logo-sub">Autonomous Multi-Agent Emergency Dispatch</div></div>
+<div><div class="logo">🚨 CrisisGrid AI</div><div class="logo-sub">Autonomous Multi-Agent Emergency Dispatch</div></div>
 <div class="clock">{now_ist.strftime("%H:%M:%S")} IST</div>
 <div class="{'sys-status sys-online' if st.session_state.backend_online else 'sys-status sys-offline'}">
 {'● ALL AGENTS ACTIVE' if st.session_state.backend_online else '○ DEMO MODE — BACKEND OFFLINE'}</div>
