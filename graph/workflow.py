@@ -2,8 +2,8 @@
 
 Pipeline: START → triage → fusion → dispatch → strategy → END
 
-A conditional edge after dispatch skips strategy if no units were
-available (escalation path).
+Strategy ALWAYS runs — even when dispatch fails — because escalation
+decisions require strategic reasoning.
 """
 
 from langgraph.graph import StateGraph, END, START
@@ -15,86 +15,39 @@ from agents.strategy_agent import strategy_agent
 from utils.state import State
 
 
-# Conditional routing
-def _should_run_strategy(state: State) -> str:
-    """Decide whether to run the Strategy Agent after Dispatch.
-
-    If the Dispatch Agent flagged "NO AVAILABLE UNITS" the strategy
-    node is skipped — there is nothing to strategize over and the
-    incident has already been marked for escalation.
-
-    Args:
-        state: Current pipeline state after the dispatch node.
-
-    Returns:
-        ``"strategy"`` to continue normally, or ``"end"`` to skip
-        strategy and terminate the pipeline.
-    """
-    reasoning = state.get("agent_reasoning", {}).get("dispatch", "")
-    if "NO AVAILABLE UNITS" in reasoning:
-        return "end"
-    return "strategy"
-
-
-# Workflow builder
 def create_workflow():
     """Build and compile the CrisisGrid AI LangGraph workflow.
 
-    The graph is a simple linear chain:
+    Graph:
+        START → triage → fusion → dispatch → strategy → END
 
-        START → triage → fusion → dispatch →(cond)→ strategy → END
-                                             └──────────────→ END
-
-    Returns:
-        A compiled LangGraph ``CompiledGraph`` ready for invocation.
+    Strategy always runs so escalation decisions are always generated,
+    even when no units are available.
     """
     workflow = StateGraph(State)
 
-    # Add agent nodes
     workflow.add_node("triage", triage_agent)
     workflow.add_node("fusion", fusion_agent)
     workflow.add_node("dispatch", dispatch_agent)
     workflow.add_node("strategy", strategy_agent)
 
-    # Linear edges
     workflow.add_edge(START, "triage")
     workflow.add_edge("triage", "fusion")
     workflow.add_edge("fusion", "dispatch")
-
-    # Conditional edge: skip strategy when dispatch fails
-    workflow.add_conditional_edges(
-        "dispatch",
-        _should_run_strategy,
-        {
-            "strategy": "strategy",
-            "end": END,
-        },
-    )
-
+    workflow.add_edge("dispatch", "strategy")
     workflow.add_edge("strategy", END)
 
     return workflow.compile()
 
 
-# Pipeline runner
 def run_pipeline(
     transcript: str,
     resources: dict,
     city_graph: object,
 ) -> dict:
-    """Run the full CrisisGrid AI pipeline on a single transcript.
+    """Run the full pipeline from scratch on a single transcript.
 
-    Initializes the shared state, invokes the compiled graph, and
-    returns the final state dict containing all agent outputs.
-
-    Args:
-        transcript: Raw 112 emergency call text.
-        resources:  Resource database — ``{unit_id: {type, status, location}}``.
-        city_graph: NetworkX graph object with zones as nodes and
-                    travel-time weighted edges.
-
-    Returns:
-        Final ``State`` dict after all agents have executed.
+    Creates a fresh state — use for standalone invocation or testing.
     """
     compiled_graph = create_workflow()
 
@@ -111,27 +64,26 @@ def run_pipeline(
         "status": "initialized"
     }
 
-    final_state = compiled_graph.invoke(initial_state)
-    return final_state
+    return compiled_graph.invoke(initial_state)
 
 
 def run_pipeline_stateful(state: dict, transcript: str) -> dict:
-    """Run pipeline on a persistent state, appending a new call.
+    """Run pipeline on a persistent state, processing one new call.
 
-    Unlike ``run_pipeline``, this does NOT create a fresh state.
-    It appends the new transcript to the existing ``raw_calls``
-    and re-invokes the full agent chain on the accumulated state.
+    Carries forward resources and agent_reasoning from existing state.
+    Incidents and dispatch_log start fresh per-call — accumulation is
+    handled by the backend layer (colab_backend.py) which deduplicates
+    and merges results into current_state.
 
     Args:
-        state: Persistent state dict with all accumulated data.
-        transcript: New raw 112 call transcript to process.
+        state: Persistent state dict from the backend.
+        transcript: New raw 112 call transcript.
 
     Returns:
-        Updated state dict after all agents have executed.
+        Final State dict with this call's pipeline results.
     """
     compiled_graph = create_workflow()
 
-    # Prepare a single-call state slice that references existing resources
     call_state: State = {
         "raw_calls": [transcript],
         "triage_outputs": [],
@@ -139,12 +91,10 @@ def run_pipeline_stateful(state: dict, transcript: str) -> dict:
         "dispatch_log": [],
         "resources": state.get("resources", {}),
         "agent_reasoning": state.get("agent_reasoning", {}),
-        "alerts": state.get("alerts", []),
+        "alerts": [],
         "incident": {},
         "city_graph": state.get("city_graph"),
         "status": "processing"
     }
 
-    final_state = compiled_graph.invoke(call_state)
-    return final_state
-
+    return compiled_graph.invoke(call_state)
