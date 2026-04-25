@@ -398,6 +398,12 @@ async def _process_transcript(transcript: str) -> dict:
                     f"[pulled from LOW incident {reroute['rerouted_from']}]"
                 )
 
+    # --- Resource strain check ---
+    total_units = len(current_state["resources"])
+    dispatched_count = sum(1 for u in current_state["resources"].values() if u.get("status") == "DISPATCHED")
+    if total_units > 0 and dispatched_count / total_units > 0.6:
+        new_feed_events.append(f"⚠️ Resource strain: {dispatched_count}/{total_units} units deployed — prioritizing CRITICAL incidents")
+
     # Always update resources from latest pipeline result
     pipeline_resources = result.get("resources", {})
     if pipeline_resources:

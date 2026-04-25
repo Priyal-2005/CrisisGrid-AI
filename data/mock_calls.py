@@ -41,6 +41,7 @@ MOCK_CALLS = [
 
     # ── Additional mock calls for live simulation ─────────────────────────
 
+
     # Duplicate accident call (same as call 4)
     "Major accident in Rohini Sector 7. Two vehicles collided, multiple injured. "
     "One person bleeding heavily. Send ambulance now!",
@@ -109,4 +110,5 @@ TEST_SCENARIO = [
         "expected_severity": "critical",
         "description": "Call 6: CRITICAL explosion when resources scarce — tests re-routing"
     },
+
 ]

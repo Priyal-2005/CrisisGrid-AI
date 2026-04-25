@@ -170,7 +170,6 @@ def _build_explanation(
 ) -> str:
     """Rich dispatch explanation: why this unit, why not others, what tradeoff."""
     route_str = " → ".join(str(node) for node in route)
-
     # Build alternatives list (sorted by ETA, excluding the chosen unit)
     alternatives = [
         (uid, t, p) for uid, (t, p) in all_etas.items() if uid != unit_id
