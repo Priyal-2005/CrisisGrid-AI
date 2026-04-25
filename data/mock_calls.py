@@ -1,6 +1,4 @@
 """Mock emergency call transcripts for CrisisGrid AI.
-
-Hinglish-style 112 call transcripts used for testing and demo.
 """
 
 
