@@ -1,7 +1,7 @@
 import networkx as nx
 import plotly.graph_objects as go
 
-def build_city_graph():
+def create_city_graph():
     """Builds and returns an undirected networkx graph representing the smart city."""
     G = nx.Graph()
     

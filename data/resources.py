@@ -101,3 +101,7 @@ INITIAL_RESOURCES = {
         "assigned_incident": "INC-PREV-03"
     }
 }
+
+def load_resources():
+    """Returns the initial state of all emergency resources."""
+    return INITIAL_RESOURCES

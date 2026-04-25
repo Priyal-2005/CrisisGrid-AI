@@ -1,12 +1,13 @@
 import operator
 from typing import Annotated, TypedDict, List, Dict, Any
 
-class State(TypedDict):
+class CrisisState(TypedDict):
     # Lists that agents will append to during the workflow
     raw_calls: Annotated[List[str], operator.add]
     triage_outputs: Annotated[List[Dict[str, Any]], operator.add]
     incidents: Annotated[List[Dict[str, Any]], operator.add]
     dispatch_log: Annotated[List[Dict[str, Any]], operator.add]
+    alerts: Annotated[List[str], operator.add]
     
     # Dictionaries overwritten or updated in place
     resources: Dict[str, Any]
