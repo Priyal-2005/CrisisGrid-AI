@@ -86,9 +86,11 @@ def _build_explanation(
     """
     route_str = " → ".join(str(node) for node in route)
     return (
-        f"Dispatched {unit_id} to {location}. "
-        f"Nearest available {unit_type} at {eta:.1f} min travel time. "
-        f"Route: {route_str}. ETA: {eta:.1f} min."
+        f"Selected {unit_id} for deployment to {location}.\n"
+        f"• Closest available {unit_type} — {eta:.1f} min travel time\n"
+        f"• Route: {route_str}\n"
+        f"• Other {unit_type} units reserved for higher-priority scenarios\n"
+        f"• ETA: {eta:.1f} min"
     )
 
 

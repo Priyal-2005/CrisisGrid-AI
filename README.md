@@ -46,18 +46,18 @@ Built for an Agentic AI hackathon with a focus on accessibility and open tools:
 
 1. **Setup Environment**:
    ```bash
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt
    cp .env.example .env
    # Add your GROQ_API_KEY and NGROK_AUTH_TOKEN to .env
    ```
 
 2. **Start the Backend (via Colab or locally)**:
-   - To run locally, simply execute `colab_backend.py`.
-   - To run on Colab, copy the contents of `colab_backend.py` into a notebook and run the cells. It will start a FastAPI server and expose it via ngrok. Note down the public URL.
+   - To run locally, simply execute `python3 colab_backend.py`.
+   - To run on Colab, copy the contents of `colab_backend.py` into a notebook and run the cells. It will start a FastAPI server and expose it via ngrok. Note down the public URL
 
 3. **Start the UI**:
    ```bash
-   streamlit run ui/dashboard.py
+   python3 -m streamlit run ui/dashboard.py
    ```
    - Paste the ngrok URL into the "Connection" sidebar in the Streamlit UI.
 

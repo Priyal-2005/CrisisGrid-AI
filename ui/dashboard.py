@@ -1,8 +1,7 @@
 """CrisisGrid AI — Emergency Dispatch Dashboard."""
 import streamlit as st
-import plotly.graph_objects as go
 import pandas as pd
-import requests, json, math
+import requests, json, math, random, time
 from datetime import datetime, timezone, timedelta
 
 BASE_URL = "http://localhost:8000"
@@ -10,8 +9,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 # ── Import mock data ──
 from mock_data import (
-    DELHI_LOCATIONS, EDGES, MOCK_INCIDENTS, MOCK_RESOURCES,
-    MOCK_DISPATCH_LOG, MOCK_TRANSCRIPTS, AGENT_REASONING, DISPATCH_ROUTES,
+    MOCK_INCIDENTS, MOCK_RESOURCES,
+    MOCK_DISPATCH_LOG, MOCK_TRANSCRIPTS, AGENT_REASONING,
 )
 
 # ── Page config ──
@@ -28,6 +27,9 @@ for k, v in [
     ("backend_online", False),
     ("new_call_flash", False),
     ("base_url", "http://localhost:8000"),
+    ("live_feed", []),
+    ("auto_mode", False),
+    ("sim_index", 0),
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
@@ -57,22 +59,24 @@ def transform_resources(resources, dispatch_log):
 def check_backend():
     base_url = st.session_state.base_url
     try:
-        r_inc = requests.get(f"{base_url}/incidents", timeout=2)
-        r_res = requests.get(f"{base_url}/resources", timeout=2)
-        r_log = requests.get(f"{base_url}/dispatch-log", timeout=2)
-        if r_inc.status_code == 200 and r_res.status_code == 200 and r_log.status_code == 200:
+        r = requests.get(f"{base_url}/state", timeout=2)
+        if r.status_code == 200:
             st.session_state.backend_online = True
-            
-            incidents = r_inc.json().get("incidents", [])
+            data = r.json()
+            incidents = data.get("incidents", [])
             for inc in incidents:
                 if "status" not in inc: inc["status"] = "ACTIVE"
-            st.session_state.incidents = incidents
-            
-            dispatch_log = r_log.json().get("dispatch_log", [])
-            st.session_state.dispatch_log = transform_dispatch_log(dispatch_log)
-            
-            resources = r_res.json().get("resources", [])
-            st.session_state.resources = transform_resources(resources, dispatch_log)
+            if incidents:
+                st.session_state.incidents = incidents
+            dispatch_log = data.get("dispatch_log", [])
+            if dispatch_log:
+                st.session_state.dispatch_log = dispatch_log
+            resources = data.get("resources", [])
+            if resources:
+                st.session_state.resources = resources
+            if data.get("agent_reasoning"):
+                st.session_state.agent_reasoning = data["agent_reasoning"]
+            st.session_state.live_feed = data.get("live_feed", [])
         else:
             st.session_state.backend_online = False
     except Exception:
@@ -137,16 +141,16 @@ def status_badge(s):
     return f'<span class="badge badge-{c}">{s}</span>'
 
 def type_icon(t):
-    return {"Fire":"🔥","Flood":"🌊","Earthquake":"🏚️","Accident":"💥"}.get(t,"⚠️")
+    return {"Fire":"🔥","Flood":"🌊","Earthquake":"🏚️","Accident":"💥","Medical":"🚑"}.get(t, {"fire":"🔥","flood":"🌊","earthquake":"🏚️","accident":"💥","medical":"🚑"}.get(str(t).lower(),"⚠️"))
 
 # ── TOP BAR ──
 now_ist = datetime.now(IST)
-active = sum(1 for i in st.session_state.incidents if i["status"] == "ACTIVE")
-deployed = sum(1 for r in st.session_state.resources if r["status"] == "DISPATCHED")
+active = sum(1 for i in st.session_state.incidents if i.get("status") == "ACTIVE")
+deployed = sum(1 for r in st.session_state.resources if r.get("status") == "DISPATCHED")
 calls = sum(i.get("calls_merged", 1) for i in st.session_state.incidents)
 
 st.markdown(f"""<div class="top-bar">
-<div><div class="logo">🚨 CRISISGRID AI</div><div class="logo-sub">Autonomous Multi-Agent Emergency Dispatch</div></div>
+<div><div class="logo">🚨 CrisisGrid AI</div><div class="logo-sub">Autonomous Multi-Agent Emergency Dispatch</div></div>
 <div class="clock">{now_ist.strftime("%H:%M:%S")} IST</div>
 <div class="{'sys-status sys-online' if st.session_state.backend_online else 'sys-status sys-offline'}">
 {'● ALL AGENTS ACTIVE' if st.session_state.backend_online else '○ DEMO MODE — BACKEND OFFLINE'}</div>
@@ -161,6 +165,14 @@ if not st.session_state.backend_online:
 if st.session_state.new_call_flash:
     st.markdown('<div class="flash-banner">📞 NEW CALL INCOMING — Processing through agents...</div>', unsafe_allow_html=True)
     st.session_state.new_call_flash = False
+
+# ── LIVE SYSTEM FEED ──
+if st.session_state.live_feed:
+    feed_html = '<div style="background:#080C15;border:1px solid #1E2D4A;border-radius:6px;padding:10px;margin-bottom:12px;font-family:JetBrains Mono,monospace;font-size:12px;">'
+    for evt in st.session_state.live_feed[:5]:
+        feed_html += f'<div style="color:#00D4FF;margin-bottom:4px;">{evt}</div>'
+    feed_html += '</div>'
+    st.markdown(feed_html, unsafe_allow_html=True)
 
 # ── SIDEBAR ──
 with st.sidebar:
@@ -184,42 +196,39 @@ with st.sidebar:
                 r = requests.post(f"{st.session_state.base_url}/process-call", json={"transcript": transcript_input}, timeout=30)
                 if r.status_code == 200:
                     data = r.json()
-                    if "incidents" in data:
-                        incidents = data["incidents"]
-                        for inc in incidents:
-                            if "status" not in inc: inc["status"] = "ACTIVE"
-                        st.session_state.incidents = incidents
-                        
-                    if "dispatch_log" in data:
-                        st.session_state.dispatch_log = transform_dispatch_log(data["dispatch_log"])
-                        
-                    if "resources" in data:
-                        st.session_state.resources = transform_resources(data["resources"], data.get("dispatch_log", []))
-                        
-                    if "agent_reasoning" in data:
+                    if data.get("incidents"):
+                        st.session_state.incidents = data["incidents"]
+                    if data.get("dispatch_log"):
+                        st.session_state.dispatch_log = data["dispatch_log"]
+                    if data.get("resources"):
+                        st.session_state.resources = data["resources"]
+                    if data.get("agent_reasoning"):
                         st.session_state.agent_reasoning = data["agent_reasoning"]
+                    st.session_state.live_feed = data.get("live_feed", [])
                     
+                    latest_id = st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
                     st.session_state.transcripts.append({
                         "original": transcript_input,
-                        "processed": "Processed via LangGraph backend.",
-                        "incident_id": st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
+                        "processed": f"Processed via LangGraph backend. Incident: {latest_id}",
+                        "incident_id": latest_id
                     })
                     st.success("✅ Dispatched via backend!")
                 else:
                     raise Exception("Bad response")
             except Exception:
                 new_inc = {
-                    "id": f"INC-2026-{len(st.session_state.incidents)+417:04d}",
+                    "id": f"INC-{len(st.session_state.incidents)+1:03d}",
                     "location": "Chandni Chowk",
                     "type": "Fire" if "aag" in transcript_input.lower() else "Accident" if "accident" in transcript_input.lower() else "Flood" if "pani" in transcript_input.lower() else "Earthquake",
                     "severity": "CRITICAL" if any(w in transcript_input.lower() for w in ["jaldi","critical","fas","trapped"]) else "MEDIUM",
-                    "timestamp": now_ist.strftime("%Y-%m-%d %H:%M:%S"),
-                    "description": f"New incident from 112 call",
+                    "time": now_ist.strftime("%H:%M:%S"),
+                    "description": "New incident from 112 call",
                     "calls_merged": 1,
                     "status": "ACTIVE",
+                    "units": [],
                 }
                 st.session_state.incidents.append(new_inc)
-                st.session_state.transcripts.append({"original": transcript_input, "processed": f"EMERGENCY: New incident processed from call. Location: {new_inc['location']}. Type: {new_inc['type']}. Severity: {new_inc['severity']}.", "incident_id": new_inc["id"]})
+                st.session_state.transcripts.append({"original": transcript_input, "processed": f"EMERGENCY: {new_inc['type']} at {new_inc['location']}. Severity: {new_inc['severity']}.", "incident_id": new_inc["id"]})
                 st.info("📡 Backend offline — processed with mock pipeline")
             st.rerun()
     st.markdown("---")
@@ -227,6 +236,19 @@ with st.sidebar:
     if st.button("🔄 Refresh Data", use_container_width=True):
         check_backend()
         st.rerun()
+
+    st.markdown("---")
+    st.markdown('<div class="section-hdr">🔥 Live Simulation</div>', unsafe_allow_html=True)
+    if st.session_state.auto_mode:
+        if st.button("⏹ Stop Simulation", use_container_width=True, type="secondary"):
+            st.session_state.auto_mode = False
+            st.rerun()
+        st.markdown('<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:#30D158;">● Simulation running...</div>', unsafe_allow_html=True)
+    else:
+        if st.button("▶ Start Live Simulation", use_container_width=True, type="primary"):
+            st.session_state.auto_mode = True
+            st.session_state.sim_index = 0
+            st.rerun()
     st.markdown("---")
     st.markdown('<div class="section-hdr">System Info</div>', unsafe_allow_html=True)
     st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8E9BB5;line-height:1.8;">
@@ -242,102 +264,167 @@ col_left, col_center, col_right = st.columns([1, 2, 1])
 
 # ── LEFT: Incident Feed ──
 with col_left:
-    st.markdown('<div class="section-hdr">🔴 Live Incident Feed</div>', unsafe_allow_html=True)
-    for idx, inc in enumerate(st.session_state.incidents):
-        sev_class = inc["severity"].lower()
+    st.markdown('<div class="section-hdr">🔴 Real-time Incident Queue</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:9px;color:#30D158;font-family:JetBrains Mono,monospace;margin-bottom:6px;">PRIORITY ENGINE: Critical incidents handled first</div>', unsafe_allow_html=True)
+    sev_order = {"CRITICAL": 0, "MEDIUM": 1, "LOW": 2}
+    sorted_incidents = sorted(st.session_state.incidents, key=lambda x: sev_order.get(x.get("severity","LOW"), 3))
+    for idx, inc in enumerate(sorted_incidents):
+        sev_class = inc.get("severity","LOW").lower()
         is_selected = st.session_state.selected_incident == inc["id"]
         border_extra = "border-color:#00D4FF!important;box-shadow:0 0 20px rgba(0,212,255,0.2);" if is_selected else ""
+        inc_time = inc.get("time", inc.get("timestamp", ""))
+        if " " in str(inc_time): inc_time = str(inc_time).split(" ")[1]
+        inc_desc = inc.get("description", "")[:80]
+        units_list = inc.get("units", [])
+        units_str = ", ".join(units_list) if units_list else "Pending"
         st.markdown(f"""<div class="incident-card {sev_class}" style="{border_extra}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#00D4FF;">{inc['id']}</span>
-        {sev_badge(inc['severity'])}
+        {sev_badge(inc.get('severity','LOW'))}
         </div>
-        <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:4px;">{type_icon(inc['type'])} {inc['type']} — {inc['location']}</div>
-        <div style="font-size:11px;color:#8E9BB5;margin-bottom:4px;">{inc['description'][:80]}</div>
+        <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:4px;">{type_icon(inc.get('type',''))} {inc.get('type','')} — {inc.get('location','')}</div>
+        <div style="font-size:11px;color:#8E9BB5;margin-bottom:4px;">{inc_desc}</div>
+        <div style="font-size:10px;color:#8E9BB5;margin-bottom:2px;">🚑 Units: {units_str}</div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:#8E9BB5;">
-        <span>🕐 {inc['timestamp'].split(' ')[1] if ' ' in inc['timestamp'] else inc['timestamp']}</span>
-        <span>📞 {inc.get('calls_merged',1)} calls merged</span>
+        <span>🕐 {inc_time}</span>
+        <span>Status: {inc.get('status','ACTIVE')}</span>
         </div></div>""", unsafe_allow_html=True)
         if st.button(f"Select", key=f"sel_{idx}", use_container_width=True):
             st.session_state.selected_incident = inc["id"]
+            st.toast(f"🎯 Tracking {inc['id']}")
             st.rerun()
 
-# ── CENTER: City Map ──
+# ── CENTER: City Map + Incident Panel ──
+LOCATION_COORDS = {
+    "Karol Bagh": [28.6514, 77.1907], "Connaught Place": [28.6315, 77.2167],
+    "ITO": [28.6285, 77.2410], "Dwarka": [28.5921, 77.0460],
+    "Rohini": [28.7495, 77.0565], "Lajpat Nagar": [28.5700, 77.2400],
+    "Saket": [28.5244, 77.2066], "Nehru Place": [28.5491, 77.2533],
+    "Rajouri Garden": [28.6492, 77.1219], "Janakpuri": [28.6219, 77.0878],
+    "Vasant Kunj": [28.5195, 77.1539], "Chandni Chowk": [28.6506, 77.2303],
+    # City graph zone names
+    "Downtown": [28.6315, 77.2167], "downtown": [28.6315, 77.2167],
+    "Harbor": [28.6285, 77.2410], "harbor": [28.6285, 77.2410],
+    "Industrial": [28.5491, 77.2533], "industrial": [28.5491, 77.2533],
+    "Sector7": [28.6219, 77.0878], "sector7": [28.6219, 77.0878],
+    "North Grid": [28.7495, 77.0565], "north_grid": [28.7495, 77.0565],
+    "Central Park": [28.5700, 77.2400], "central_park": [28.5700, 77.2400],
+    "Westside": [28.6492, 77.1219], "westside": [28.6492, 77.1219],
+    "Port": [28.5921, 77.0460], "port": [28.5921, 77.0460],
+    "Eastside": [28.5244, 77.2066], "eastside": [28.5244, 77.2066],
+    "Suburbs": [28.5195, 77.1539], "suburbs": [28.5195, 77.1539],
+    "Midtown": [28.6506, 77.2303], "midtown": [28.6506, 77.2303],
+    "Airport": [28.5562, 77.1000], "airport": [28.5562, 77.1000],
+}
+
 with col_center:
     st.markdown('<div class="section-hdr">🗺️ Delhi Emergency Grid — Live Map</div>', unsafe_allow_html=True)
-    fig = go.Figure()
-    # Draw edges
-    for src, dst, dist in EDGES:
-        x0, y0 = DELHI_LOCATIONS[src][1], DELHI_LOCATIONS[src][0]
-        x1, y1 = DELHI_LOCATIONS[dst][1], DELHI_LOCATIONS[dst][0]
-        fig.add_trace(go.Scattergl(x=[x0, x1], y=[y0, y1], mode="lines", line=dict(color="#1E2D4A", width=1), hoverinfo="skip", showlegend=False))
-    # Highlight dispatch routes
-    sel = st.session_state.selected_incident
-    active_routes = DISPATCH_ROUTES.get(sel, []) if sel else []
-    if not active_routes:
-        for routes in DISPATCH_ROUTES.values():
-            active_routes.extend(routes)
-    for src, dst in active_routes:
-        if src in DELHI_LOCATIONS and dst in DELHI_LOCATIONS:
-            x0, y0 = DELHI_LOCATIONS[src][1], DELHI_LOCATIONS[src][0]
-            x1, y1 = DELHI_LOCATIONS[dst][1], DELHI_LOCATIONS[dst][0]
-            fig.add_trace(go.Scattergl(x=[x0, x1], y=[y0, y1], mode="lines", line=dict(color="#00D4FF", width=3), hoverinfo="skip", showlegend=False))
-    # Draw nodes
-    inc_locations = {}
+    sel_id = st.session_state.selected_incident
+    map_data = []
     for inc in st.session_state.incidents:
-        if inc["location"] in DELHI_LOCATIONS:
-            inc_locations[inc["location"]] = inc
-    node_x, node_y, node_color, node_size, node_text, node_border = [], [], [], [], [], []
-    for loc, (lat, lon) in DELHI_LOCATIONS.items():
-        node_x.append(lon)
-        node_y.append(lat)
-        if loc in inc_locations:
-            inc = inc_locations[loc]
-            c = {"CRITICAL": "#FF2D55", "MEDIUM": "#FF9500", "LOW": "#30D158"}.get(inc["severity"], "#8E9BB5")
-            node_color.append(c)
-            node_size.append(18 if inc["severity"] == "CRITICAL" else 14)
-            node_text.append(f"<b>{loc}</b><br>{type_icon(inc['type'])} {inc['type']}<br>Severity: {inc['severity']}<br>{inc['description'][:60]}")
-            node_border.append(c)
+        loc = inc.get("location", "")
+        coords = LOCATION_COORDS.get(loc)
+        if coords:
+            map_data.append({"lat": coords[0], "lon": coords[1], "incident": inc["id"], "type": inc.get("type", "")})
+    if sel_id:
+        sel_data = [m for m in map_data if m["incident"] == sel_id]
+        if sel_data:
+            df_map = pd.DataFrame(sel_data)
+            st.map(df_map, latitude="lat", longitude="lon", zoom=12, use_container_width=True)
+        elif map_data:
+            df_map = pd.DataFrame(map_data)
+            st.map(df_map, latitude="lat", longitude="lon", zoom=11, use_container_width=True)
         else:
-            node_color.append("#1E2D4A")
-            node_size.append(10)
-            node_text.append(f"<b>{loc}</b><br>No active incidents")
-            node_border.append("#8E9BB5")
-    fig.add_trace(go.Scattergl(x=node_x, y=node_y, mode="markers+text", marker=dict(size=node_size, color=node_color, line=dict(width=2, color=node_border)), text=[loc for loc in DELHI_LOCATIONS.keys()], textposition="top center", textfont=dict(size=9, color="#8E9BB5", family="Inter"), hovertext=node_text, hoverinfo="text", showlegend=False))
-    # Resource markers
-    for res in st.session_state.resources:
-        if res["status"] == "DISPATCHED" and res["location"] in DELHI_LOCATIONS:
-            lat, lon = DELHI_LOCATIONS[res["location"]]
-            icon = {"Ambulance": "🚑", "Fire Truck": "🚒", "Police Van": "🚔"}.get(res["type"], "🚗")
-            fig.add_annotation(x=lon, y=lat - 0.008, text=f"{icon}{res['id']}", showarrow=False, font=dict(size=8, color="#00D4FF", family="JetBrains Mono"), bgcolor="rgba(15,22,41,0.8)", bordercolor="#1E2D4A", borderwidth=1, borderpad=2)
-    fig.update_layout(plot_bgcolor="#0A0E1A", paper_bgcolor="#0A0E1A", margin=dict(l=0, r=0, t=0, b=0), height=460, xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[76.95, 77.35]), yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[28.48, 28.80], scaleanchor="x"), hoverlabel=dict(bgcolor="#0F1629", bordercolor="#1E2D4A", font=dict(family="JetBrains Mono", size=11, color="#fff")))
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.info("No incidents with mapped locations yet.")
+    elif map_data:
+        df_map = pd.DataFrame(map_data)
+        st.map(df_map, latitude="lat", longitude="lon", zoom=11, use_container_width=True)
+    else:
+        st.info("No active incidents to display on map.")
+
+    # ── Incident Control Panel ──
+    if sel_id:
+        sel_inc = next((i for i in st.session_state.incidents if i["id"] == sel_id), None)
+        if sel_inc:
+            sev = sel_inc.get('severity', 'LOW')
+            sev_color = {"CRITICAL": "#FF2D55", "MEDIUM": "#FF9500", "LOW": "#30D158"}.get(sev, "#8E9BB5")
+            units_list = sel_inc.get("units", [])
+            units_str = ", ".join(units_list) if units_list else "None assigned"
+            desc = sel_inc.get("description", "No description")
+            inc_time = sel_inc.get("time", sel_inc.get("timestamp", ""))
+            st.markdown(f"""<div style="background:#0F1629;border:1px solid {sev_color};border-radius:8px;padding:16px;margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#00D4FF;font-weight:700;">🔍 {sel_inc['id']}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{sev_color};border:1px solid {sev_color};border-radius:10px;padding:2px 10px;">{sev}</span>
+            </div>
+            <div style="color:#fff;font-weight:600;font-size:15px;margin-bottom:6px;">{type_icon(sel_inc.get('type',''))} {sel_inc.get('type','')} — {sel_inc.get('location','')}</div>
+            <div style="color:#C8D1E4;font-size:12px;margin-bottom:8px;">{desc}</div>
+            <div style="display:flex;gap:20px;font-size:11px;color:#8E9BB5;">
+            <span>🕐 {inc_time}</span>
+            <span>🚑 {units_str}</span>
+            <span>📊 Status: {sel_inc.get('status','ACTIVE')}</span>
+            </div></div>""", unsafe_allow_html=True)
+
+            # Filtered dispatch log for this incident
+            inc_dispatches = [d for d in st.session_state.dispatch_log if d.get("incident") == sel_id or d.get("incident_id") == sel_id]
+            if inc_dispatches:
+                st.markdown(f'<div style="font-size:11px;color:#8E9BB5;margin-top:8px;">📋 Dispatch entries for {sel_id}:</div>', unsafe_allow_html=True)
+                df_disp = pd.DataFrame(inc_dispatches)
+                df_disp.columns = [c.upper().replace("_"," ") for c in df_disp.columns]
+                st.dataframe(df_disp, use_container_width=True, hide_index=True, height=150)
+                # Show route text
+                for d in inc_dispatches:
+                    route = d.get("route", d.get("ROUTE", ""))
+                    if route:
+                        st.markdown(f'<div style="font-size:11px;color:#00D4FF;font-family:JetBrains Mono,monospace;margin-top:4px;">🚨 Route: {route}</div>', unsafe_allow_html=True)
+        if st.button("✖ Clear Selection", use_container_width=True):
+            st.session_state.selected_incident = None
+            st.rerun()
 
 # ── RIGHT: Resource Status ──
 with col_right:
     st.markdown('<div class="section-hdr">📦 Resource Status</div>', unsafe_allow_html=True)
-    for rtype in ["Ambulance", "Fire Truck", "Police Van"]:
-        icon = {"Ambulance": "🚑", "Fire Truck": "🚒", "Police Van": "🚔"}[rtype]
-        st.markdown(f"<div style='font-size:12px;color:#8E9BB5;margin:8px 0 4px;font-weight:600;'>{icon} {rtype}s</div>", unsafe_allow_html=True)
-        for res in [r for r in st.session_state.resources if r["type"] == rtype]:
-            eta_txt = f"<span style='color:#FF9500;'>ETA: {res['eta']}</span>" if res["status"] == "DISPATCHED" else ""
-            inc_txt = f"<span style='color:#FF2D55;font-size:10px;'>→ {res['incident']}</span>" if res["status"] == "DISPATCHED" else ""
-            st.markdown(f"""<div class="resource-card">
+    type_map = {"ambulance": "🚑 Ambulances", "fire_truck": "🚒 Fire Trucks", "police": "🚔 Police Vans",
+                "Ambulance": "🚑 Ambulances", "Fire Truck": "🚒 Fire Trucks", "Police Van": "🚔 Police Vans"}
+    seen_types = []
+    for res in st.session_state.resources:
+        rtype = res.get("type", "")
+        label = type_map.get(rtype, rtype)
+        if label not in seen_types:
+            seen_types.append(label)
+            st.markdown(f"<div style='font-size:12px;color:#8E9BB5;margin:8px 0 4px;font-weight:600;'>{label}</div>", unsafe_allow_html=True)
+        status = res.get("status", "AVAILABLE")
+        eta_val = res.get("eta_display", res.get("eta", ""))
+        eta_txt = f"<span style='color:#FF9500;'>ETA: {eta_val}</span>" if status == "DISPATCHED" and eta_val else ""
+        inc_val = res.get("assigned_incident", res.get("incident", ""))
+        inc_txt = f"<span style='color:#FF2D55;font-size:10px;'>→ {inc_val}</span>" if status == "DISPATCHED" and inc_val else ""
+        loc = res.get("location", "").replace("_", " ").title()
+        st.markdown(f"""<div class="resource-card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#fff;font-weight:700;">{res['id']}</span>
-            {status_badge(res['status'])}
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#fff;font-weight:700;">{res.get('id','')}</span>
+            {status_badge(status)}
             </div>
-            <div style="font-size:11px;color:#8E9BB5;">📍 {res['location']} {eta_txt}</div>
+            <div style="font-size:11px;color:#8E9BB5;">📍 {loc} {eta_txt}</div>
             <div>{inc_txt}</div>
             </div>""", unsafe_allow_html=True)
 
 # ── BOTTOM TABS ──
 st.markdown("---")
-tab1, tab2, tab3 = st.tabs(["📋 Dispatch Log", "🧠 Agent Reasoning", "📞 Raw Transcripts"])
+tab1, tab2, tab3 = st.tabs(["📋 Dispatch Log", "🧠 AI Decision Engine", "📞 Raw Transcripts"])
 
 with tab1:
+    sel_filter = st.session_state.selected_incident
     if st.session_state.dispatch_log:
-        df = pd.DataFrame(st.session_state.dispatch_log)
+        if sel_filter:
+            filtered = [d for d in st.session_state.dispatch_log if d.get("incident") == sel_filter or d.get("incident_id") == sel_filter]
+            if filtered:
+                st.markdown(f'<div style="font-size:11px;color:#00D4FF;margin-bottom:6px;">Showing dispatches for {sel_filter}</div>', unsafe_allow_html=True)
+                df = pd.DataFrame(filtered)
+            else:
+                st.info(f"No dispatch entries for {sel_filter}")
+                df = pd.DataFrame(st.session_state.dispatch_log)
+        else:
+            df = pd.DataFrame(st.session_state.dispatch_log)
         df.columns = [c.upper() for c in df.columns]
         st.dataframe(df, use_container_width=True, hide_index=True, height=280)
 
@@ -358,9 +445,48 @@ with tab3:
             st.markdown(f'<div class="transcript-box"><span class="transcript-proc">{t["processed"]}</span></div>', unsafe_allow_html=True)
         st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-# ── Auto-refresh ──
+# ── Auto-refresh + Live Simulation ──
 try:
     from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=10000, limit=None, key="auto_refresh")
+    if st.session_state.auto_mode:
+        st_autorefresh(interval=3000, limit=None, key="sim_refresh")
+    else:
+        st_autorefresh(interval=10000, limit=None, key="auto_refresh")
 except ImportError:
     pass
+
+# ── Live Simulation Logic ──
+if st.session_state.auto_mode and st.session_state.backend_online:
+    try:
+        # Fetch mock calls from backend
+        mock_resp = requests.get(f"{st.session_state.base_url}/mock-calls", timeout=2)
+        if mock_resp.status_code == 200:
+            mock_calls = mock_resp.json().get("calls", [])
+            if mock_calls:
+                idx = st.session_state.sim_index % len(mock_calls)
+                call = mock_calls[idx]
+                st.session_state.sim_index = idx + 1
+
+                r = requests.post(
+                    f"{st.session_state.base_url}/process-call",
+                    json={"transcript": call},
+                    timeout=30,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("incidents"):
+                        st.session_state.incidents = data["incidents"]
+                    if data.get("dispatch_log"):
+                        st.session_state.dispatch_log = data["dispatch_log"]
+                    if data.get("resources"):
+                        st.session_state.resources = data["resources"]
+                    if data.get("agent_reasoning"):
+                        st.session_state.agent_reasoning = data["agent_reasoning"]
+                    st.session_state.live_feed = data.get("live_feed", [])
+                    st.session_state.transcripts.append({
+                        "original": call,
+                        "processed": f"[SIM] Processed via backend.",
+                        "incident_id": st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
+                    })
+    except Exception:
+        pass
