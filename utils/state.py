@@ -1,24 +1,19 @@
-"""CrisisGrid AI - Shared LangGraph state schema."""
+import operator
+from typing import Annotated, TypedDict, List, Dict, Any
 
-from typing import TypedDict, List, Dict
-
-
-class CrisisState(TypedDict):
-    """Shared state passed between all agents in the pipeline.
-
-    Attributes:
-        raw_calls:       Incoming emergency call transcripts.
-        incidents:       Structured incident dicts produced by Triage/Fusion.
-        resources:       All units and their current statuses.
-        dispatch_log:    History of dispatch actions taken.
-        agent_reasoning: Plain-English explanations keyed by agent name.
-        alerts:          System-level warnings and recommendations.
-        city_graph:      NetworkX graph object with zones and travel times.
-    """
-    raw_calls: List[str]
-    incidents: List[Dict]
-    resources: Dict
-    dispatch_log: List[Dict]
+class State(TypedDict):
+    # Lists that agents will append to during the workflow
+    raw_calls: Annotated[List[str], operator.add]
+    triage_outputs: Annotated[List[Dict[str, Any]], operator.add]
+    incidents: Annotated[List[Dict[str, Any]], operator.add]
+    dispatch_log: Annotated[List[Dict[str, Any]], operator.add]
+    
+    # Dictionaries overwritten or updated in place
+    resources: Dict[str, Any]
     agent_reasoning: Dict[str, str]
-    alerts: List[str]
-    city_graph: object
+    
+    # Single graph object, as requested
+    city_graph: Any  # nx.Graph object
+    
+    # Overall pipeline status for UI tracking
+    status: str
