@@ -28,7 +28,8 @@ PROJECT_ROOT = os.getcwd()
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from graph.workflow import run_pipeline
+from graph.workflow import run_pipeline, run_pipeline_stateful
+from data.mock_calls import MOCK_CALLS
 from data.city_graph import create_city_graph
 from data.resources import load_resources
 
@@ -52,12 +53,14 @@ resources = load_resources()
 incident_counter = 0  # incremental display IDs
 
 current_state: dict = {
+    "raw_calls": [],          # all transcripts received
     "incidents": [],         # list of formatted incident dicts
     "resources": resources,  # live resource dict
     "dispatch_log": [],      # list of formatted dispatch entries
     "agent_reasoning": {},   # latest reasoning per agent
     "alerts": [],            # system alerts
     "live_feed": [],         # latest events for live feed banner
+    "city_graph": city_graph, # shared city graph reference
 }
 
 # Track seen incident UUIDs to prevent duplicates
@@ -181,10 +184,12 @@ async def process_call(data: CallRequest):
     logger.info("📞 Incoming call: %s...", data.transcript[:80])
 
     try:
-        result = run_pipeline(
+        # Append call to persistent history
+        current_state["raw_calls"].append(data.transcript)
+
+        result = run_pipeline_stateful(
+            state=current_state,
             transcript=data.transcript,
-            resources=current_state["resources"],
-            city_graph=city_graph,
         )
 
         now_str = datetime.now(IST).strftime("%H:%M:%S")
@@ -342,6 +347,12 @@ async def get_full_state():
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@app.get("/mock-calls")
+async def get_mock_calls():
+    """Return available mock call transcripts for simulation."""
+    return {"calls": MOCK_CALLS}
 
 
 # %% Cell 5: Start ngrok tunnel and run server

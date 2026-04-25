@@ -2,7 +2,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
-import requests, json, math
+import requests, json, math, random, time
 from datetime import datetime, timezone, timedelta
 
 BASE_URL = "http://localhost:8000"
@@ -29,6 +29,8 @@ for k, v in [
     ("new_call_flash", False),
     ("base_url", "http://localhost:8000"),
     ("live_feed", []),
+    ("auto_mode", False),
+    ("sim_index", 0),
 ]:
     if k not in st.session_state:
         st.session_state[k] = v
@@ -235,6 +237,19 @@ with st.sidebar:
     if st.button("🔄 Refresh Data", use_container_width=True):
         check_backend()
         st.rerun()
+
+    st.markdown("---")
+    st.markdown('<div class="section-hdr">🔥 Live Simulation</div>', unsafe_allow_html=True)
+    if st.session_state.auto_mode:
+        if st.button("⏹ Stop Simulation", use_container_width=True, type="secondary"):
+            st.session_state.auto_mode = False
+            st.rerun()
+        st.markdown('<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:#30D158;">● Simulation running...</div>', unsafe_allow_html=True)
+    else:
+        if st.button("▶ Start Live Simulation", use_container_width=True, type="primary"):
+            st.session_state.auto_mode = True
+            st.session_state.sim_index = 0
+            st.rerun()
     st.markdown("---")
     st.markdown('<div class="section-hdr">System Info</div>', unsafe_allow_html=True)
     st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8E9BB5;line-height:1.8;">
@@ -383,9 +398,48 @@ with tab3:
             st.markdown(f'<div class="transcript-box"><span class="transcript-proc">{t["processed"]}</span></div>', unsafe_allow_html=True)
         st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-# ── Auto-refresh ──
+# ── Auto-refresh + Live Simulation ──
 try:
     from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=10000, limit=None, key="auto_refresh")
+    if st.session_state.auto_mode:
+        st_autorefresh(interval=3000, limit=None, key="sim_refresh")
+    else:
+        st_autorefresh(interval=10000, limit=None, key="auto_refresh")
 except ImportError:
     pass
+
+# ── Live Simulation Logic ──
+if st.session_state.auto_mode and st.session_state.backend_online:
+    try:
+        # Fetch mock calls from backend
+        mock_resp = requests.get(f"{st.session_state.base_url}/mock-calls", timeout=2)
+        if mock_resp.status_code == 200:
+            mock_calls = mock_resp.json().get("calls", [])
+            if mock_calls:
+                idx = st.session_state.sim_index % len(mock_calls)
+                call = mock_calls[idx]
+                st.session_state.sim_index = idx + 1
+
+                r = requests.post(
+                    f"{st.session_state.base_url}/process-call",
+                    json={"transcript": call},
+                    timeout=30,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("incidents"):
+                        st.session_state.incidents = data["incidents"]
+                    if data.get("dispatch_log"):
+                        st.session_state.dispatch_log = data["dispatch_log"]
+                    if data.get("resources"):
+                        st.session_state.resources = data["resources"]
+                    if data.get("agent_reasoning"):
+                        st.session_state.agent_reasoning = data["agent_reasoning"]
+                    st.session_state.live_feed = data.get("live_feed", [])
+                    st.session_state.transcripts.append({
+                        "original": call,
+                        "processed": f"[SIM] Processed via backend.",
+                        "incident_id": st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
+                    })
+    except Exception:
+        pass

@@ -113,3 +113,38 @@ def run_pipeline(
 
     final_state = compiled_graph.invoke(initial_state)
     return final_state
+
+
+def run_pipeline_stateful(state: dict, transcript: str) -> dict:
+    """Run pipeline on a persistent state, appending a new call.
+
+    Unlike ``run_pipeline``, this does NOT create a fresh state.
+    It appends the new transcript to the existing ``raw_calls``
+    and re-invokes the full agent chain on the accumulated state.
+
+    Args:
+        state: Persistent state dict with all accumulated data.
+        transcript: New raw 112 call transcript to process.
+
+    Returns:
+        Updated state dict after all agents have executed.
+    """
+    compiled_graph = create_workflow()
+
+    # Prepare a single-call state slice that references existing resources
+    call_state: State = {
+        "raw_calls": [transcript],
+        "triage_outputs": [],
+        "incidents": [],
+        "dispatch_log": [],
+        "resources": state.get("resources", {}),
+        "agent_reasoning": state.get("agent_reasoning", {}),
+        "alerts": state.get("alerts", []),
+        "incident": {},
+        "city_graph": state.get("city_graph"),
+        "status": "processing"
+    }
+
+    final_state = compiled_graph.invoke(call_state)
+    return final_state
+
