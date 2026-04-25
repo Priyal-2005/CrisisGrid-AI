@@ -1,9 +1,6 @@
 import networkx as nx
 import plotly.graph_objects as go
 
-import networkx as nx
-import plotly.graph_objects as go
-
 class CityGraph:
     def __init__(self):
         self.graph = self._build_graph()

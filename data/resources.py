@@ -105,4 +105,5 @@ INITIAL_RESOURCES = {
 }
 
 def load_resources():
+    """Returns the initial state of all emergency resources."""
     return copy.deepcopy(INITIAL_RESOURCES)

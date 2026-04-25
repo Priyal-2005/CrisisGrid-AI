@@ -23,20 +23,34 @@ def triage_agent(state):
     triage_outputs = []
     reasoning_notes = []
     
-    system_prompt = """
+    # Valid zones in the city graph — the LLM must pick one of these
+    VALID_ZONES = [
+        "downtown", "harbor", "industrial", "sector7", "north_grid",
+        "central_park", "westside", "port", "eastside", "suburbs",
+        "midtown", "airport"
+    ]
+    zones_str = ", ".join(VALID_ZONES)
+
+    system_prompt = f"""
     You are an emergency triage agent. You receive raw emergency 112 calls in Hinglish (Hindi + English).
     Your task is to extract structured information into JSON format.
     You must return ONLY valid JSON without any markdown formatting or extra text.
     
+    CRITICAL RULE FOR LOCATION:
+    The location MUST be exactly one of these city zones: {zones_str}
+    If the caller mentions a specific area, map it to the closest matching zone.
+    If the location is vague or unclear, default to "downtown".
+    NEVER use "Unknown" or any value not in the list above.
+    
     Required JSON schema:
-    {
-        "location": "string (extract the best guess for the location, standardizing vague terms like 'yahan' to 'Unknown' if no specific location is mentioned)",
+    {{
+        "location": "string (MUST be one of: {zones_str})",
         "incident_type": "string (must be exactly one of: fire, flood, accident, earthquake, medical)",
         "severity": "string (must be exactly one of: low, medium, critical)",
         "injured_count": integer (extract the number of injured people, 0 if none mentioned),
         "resources_needed": ["list of strings (choose from: ambulance, fire_truck, police)"],
         "caller_summary": "string (plain English summary of the situation)"
-    }
+    }}
     """
     
     for call in raw_calls:
@@ -65,7 +79,7 @@ def triage_agent(state):
             # Graceful fallback for parsing or API errors
             fallback = {
                 "incident_id": str(uuid.uuid4()),
-                "location": "Unknown",
+                "location": "downtown",
                 "incident_type": "unknown",
                 "severity": "medium",
                 "injured_count": 0,

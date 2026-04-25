@@ -96,10 +96,29 @@ async def process_call(data: CallRequest):
             city_graph=city_graph,
         )
 
+        # Deduplicate incidents (LangGraph operator.add causes repeats)
+        raw_incidents = result.get("incidents", [])
+        seen_ids = set()
+        deduped_incidents = []
+        for inc in raw_incidents:
+            iid = inc.get("id", inc.get("master_incident_id"))
+            if iid not in seen_ids:
+                seen_ids.add(iid)
+                deduped_incidents.append(inc)
+
+        raw_log = result.get("dispatch_log", [])
+        seen_log = set()
+        deduped_log = []
+        for entry in raw_log:
+            key = (entry.get("incident_id"), entry.get("unit_id"), entry.get("timestamp"))
+            if key not in seen_log:
+                seen_log.add(key)
+                deduped_log.append(entry)
+
         # Merge pipeline output into server state
-        current_state["incidents"] = result.get("incidents", current_state["incidents"])
+        current_state["incidents"] = deduped_incidents or current_state["incidents"]
         current_state["resources"] = result.get("resources", current_state["resources"])
-        current_state["dispatch_log"] = result.get("dispatch_log", current_state["dispatch_log"])
+        current_state["dispatch_log"] = deduped_log or current_state["dispatch_log"]
         current_state["agent_reasoning"] = result.get("agent_reasoning", current_state["agent_reasoning"])
         current_state["alerts"] = result.get("alerts", current_state.get("alerts", []))
 
@@ -155,7 +174,13 @@ if ngrok_auth:
 else:
     logger.warning("⚠️  NGROK_AUTH_TOKEN not set — tunnel may fail on free tier.")
 
-public_url = ngrok.connect(8000).public_url
+tunnels = ngrok.get_tunnels()
+if tunnels:
+    public_url = tunnels[0].public_url
+    logger.info("🔌 Found active ngrok tunnel: %s", public_url)
+else:
+    public_url = ngrok.connect(8000).public_url
+    logger.info("🔌 Started new ngrok tunnel: %s", public_url)
 
 print()
 print("=" * 60)
