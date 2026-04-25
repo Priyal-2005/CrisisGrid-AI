@@ -111,7 +111,7 @@ async def process_call(data: CallRequest):
 
         return {
             "incidents": current_state["incidents"],
-            "resources": list(current_state["resources"].values()),
+            "resources": [{"id": k, **v} for k, v in current_state["resources"].items()],
             "dispatch_log": current_state["dispatch_log"],
             "agent_reasoning": current_state["agent_reasoning"],
         }
@@ -132,7 +132,7 @@ async def get_incidents():
 async def get_resources():
     """Return current resource statuses."""
     logger.info("📋 GET /resources")
-    return {"resources": list(current_state["resources"].values())}
+    return {"resources": [{"id": k, **v} for k, v in current_state["resources"].items()]}
 
 
 @app.get("/dispatch-log")

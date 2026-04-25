@@ -22,9 +22,10 @@ All agents share a common LangGraph state object to maintain context and coordin
 ## 🛠 Tech Stack
 
 Built for an Agentic AI hackathon with a focus on accessibility and open tools:
-- **Orchestration**: LangGraph
-- **LLM**: Claude API (Free tier) / Groq (Free)
-- **UI**: Streamlit (Dashboard)
+- **Orchestration**: LangGraph, LangChain
+- **Backend API**: FastAPI, Uvicorn, ngrok (Colab-ready)
+- **LLM**: Groq API (Llama-3.1-8b-instant) / Claude API
+- **UI**: Streamlit (Dashboard with Plotly mapping)
 - **Routing**: NetworkX (City routing graph)
 - **Language**: Python
 
@@ -36,31 +37,51 @@ Built for an Agentic AI hackathon with a focus on accessibility and open tools:
 
 ## ⚖️ Constraints & Features
 
-- **100% Free Tools**: Uses only free APIs and open-source tools.
+- **100% Free Tools**: Uses only free APIs and open-source tools (Groq, ngrok free tier, Google Colab).
 - **Hinglish Support**: Natively processes mixed Hindi-English input common in Indian emergency calls.
 - **Explainable AI**: Every dispatch decision made by the Strategy Agent includes a plain English explanation to ensure transparency and trust.
-- **Live Demo Ready**: Fully functional for a live hackathon demonstration.
+- **Live Demo Ready**: Decoupled architecture allows the heavy agentic pipeline to run on Google Colab, while the UI connects from any local machine.
+
+## 🚀 How to Run
+
+1. **Setup Environment**:
+   ```bash
+   pip install -r requirements.txt
+   cp .env.example .env
+   # Add your GROQ_API_KEY and NGROK_AUTH_TOKEN to .env
+   ```
+
+2. **Start the Backend (via Colab or locally)**:
+   - To run locally, simply execute `colab_backend.py`.
+   - To run on Colab, copy the contents of `colab_backend.py` into a notebook and run the cells. It will start a FastAPI server and expose it via ngrok. Note down the public URL.
+
+3. **Start the UI**:
+   ```bash
+   streamlit run ui/dashboard.py
+   ```
+   - Paste the ngrok URL into the "Connection" sidebar in the Streamlit UI.
 
 ## 📂 Project Structure
 
 ```text
-crisigrid-ai/
+crisisgrid-ai/
 ├── agents/
-│   ├── triage_agent.py
-│   ├── fusion_agent.py
-│   ├── dispatch_agent.py
-│   └── strategy_agent.py
+│   ├── triage_agent.py      # Extracts JSON from transcripts
+│   ├── fusion_agent.py      # Merges duplicate incidents
+│   ├── dispatch_agent.py    # Routes resources via NetworkX
+│   └── strategy_agent.py    # Makes LLM-based trade-off decisions
 ├── graph/
-│   └── workflow.py
+│   └── workflow.py          # LangGraph pipeline definition
 ├── data/
 │   ├── mock_calls.py        # Hinglish transcripts
-│   ├── city_graph.py        # networkx graph
-│   └── resources.py         # mock ambulances, trucks, etc.
+│   ├── city_graph.py        # NetworkX grid of Delhi NCR
+│   └── resources.py         # Mock ambulances, fire trucks, etc.
 ├── ui/
-│   └── dashboard.py         # Streamlit app
+│   └── dashboard.py         # Streamlit visual dashboard
 ├── utils/
-│   └── state.py             # shared LangGraph state schema
+│   └── state.py             # Shared LangGraph state TypedDict
+├── colab_backend.py         # FastAPI + ngrok server entrypoint
 ├── requirements.txt
-├── README.md
-└── .gitignore
+├── .env.example
+└── README.md
 ```
