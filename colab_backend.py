@@ -11,6 +11,9 @@ import sys
 import logging
 from datetime import datetime
 
+from dotenv import load_dotenv
+load_dotenv()  # Load GROQ_API_KEY, NGROK_AUTH_TOKEN from .env
+
 import nest_asyncio
 nest_asyncio.apply()
 
