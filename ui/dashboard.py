@@ -179,13 +179,13 @@ with st.sidebar:
     st.markdown('<div class="logo" style="font-size:20px;margin-bottom:4px;">📡 DISPATCH CONSOLE</div>', unsafe_allow_html=True)
     st.markdown("---")
     st.markdown('<div class="section-hdr">Connection</div>', unsafe_allow_html=True)
-    
+
     def update_base_url():
         st.session_state.base_url = st.session_state.temp_base_url
         check_backend()
-        
+
     st.text_input("BASE URL", value=st.session_state.base_url, key="temp_base_url", on_change=update_base_url)
-    
+
     st.markdown("---")
     st.markdown('<div class="section-hdr">Submit 112 Call</div>', unsafe_allow_html=True)
     transcript_input = st.text_area("Enter emergency call transcript:", height=120, placeholder="e.g. Bhai jaldi aao, yahan aag lagi hai...")
@@ -196,16 +196,12 @@ with st.sidebar:
                 r = requests.post(f"{st.session_state.base_url}/process-call", json={"transcript": transcript_input}, timeout=30)
                 if r.status_code == 200:
                     data = r.json()
-                    if data.get("incidents"):
-                        st.session_state.incidents = data["incidents"]
-                    if data.get("dispatch_log"):
-                        st.session_state.dispatch_log = data["dispatch_log"]
-                    if data.get("resources"):
-                        st.session_state.resources = data["resources"]
+                    st.session_state.incidents = data.get("incidents", st.session_state.incidents)
+                    st.session_state.dispatch_log = data.get("dispatch_log", st.session_state.dispatch_log)
+                    st.session_state.resources = data.get("resources", st.session_state.resources)
                     if data.get("agent_reasoning"):
                         st.session_state.agent_reasoning = data["agent_reasoning"]
                     st.session_state.live_feed = data.get("live_feed", [])
-                    
                     latest_id = st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
                     st.session_state.transcripts.append({
                         "original": transcript_input,
@@ -216,26 +212,63 @@ with st.sidebar:
                 else:
                     raise Exception("Bad response")
             except Exception:
+                sev = "CRITICAL" if any(w in transcript_input.lower() for w in ["jaldi","critical","fas","trapped","blast","explosion"]) else "MEDIUM"
                 new_inc = {
                     "id": f"INC-{len(st.session_state.incidents)+1:03d}",
-                    "location": "Chandni Chowk",
-                    "type": "Fire" if "aag" in transcript_input.lower() else "Accident" if "accident" in transcript_input.lower() else "Flood" if "pani" in transcript_input.lower() else "Earthquake",
-                    "severity": "CRITICAL" if any(w in transcript_input.lower() for w in ["jaldi","critical","fas","trapped"]) else "MEDIUM",
+                    "location": "Downtown",
+                    "type": "Fire" if "aag" in transcript_input.lower() or "fire" in transcript_input.lower() else "Accident" if "accident" in transcript_input.lower() else "Medical" if "ambulance" in transcript_input.lower() or "medical" in transcript_input.lower() else "Flood" if "pani" in transcript_input.lower() else "Emergency",
+                    "severity": sev,
                     "time": now_ist.strftime("%H:%M:%S"),
-                    "description": "New incident from 112 call",
+                    "timestamp": now_ist.strftime("%Y-%m-%d %H:%M:%S"),
+                    "description": "New incident from 112 call — backend offline",
                     "calls_merged": 1,
                     "status": "ACTIVE",
                     "units": [],
+                    "escalated": False,
                 }
                 st.session_state.incidents.append(new_inc)
-                st.session_state.transcripts.append({"original": transcript_input, "processed": f"EMERGENCY: {new_inc['type']} at {new_inc['location']}. Severity: {new_inc['severity']}.", "incident_id": new_inc["id"]})
+                st.session_state.transcripts.append({
+                    "original": transcript_input,
+                    "processed": f"EMERGENCY: {new_inc['type']} at {new_inc['location']}. Severity: {new_inc['severity']}.",
+                    "incident_id": new_inc["id"]
+                })
                 st.info("📡 Backend offline — processed with mock pipeline")
             st.rerun()
+
     st.markdown("---")
     st.markdown('<div class="section-hdr">Quick Actions</div>', unsafe_allow_html=True)
-    if st.button("🔄 Refresh Data", use_container_width=True):
-        check_backend()
-        st.rerun()
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        if st.button("🔄 Refresh", use_container_width=True):
+            check_backend()
+            st.rerun()
+    with col_r2:
+        if st.button("🔄 Reset", use_container_width=True):
+            try:
+                r = requests.post(f"{st.session_state.base_url}/reset", timeout=5)
+                if r.status_code == 200:
+                    check_backend()
+                    st.toast("✅ State reset")
+                    st.rerun()
+            except Exception:
+                st.toast("⚠ Backend offline")
+
+    if st.session_state.backend_online:
+        if st.button("🎬 Run Test Scenario", use_container_width=True):
+            try:
+                r = requests.post(f"{st.session_state.base_url}/run-scenario", timeout=120)
+                if r.status_code == 200:
+                    data = r.json().get("final_state", {})
+                    st.session_state.incidents = data.get("incidents", st.session_state.incidents)
+                    st.session_state.dispatch_log = data.get("dispatch_log", st.session_state.dispatch_log)
+                    st.session_state.resources = data.get("resources", st.session_state.resources)
+                    if data.get("agent_reasoning"):
+                        st.session_state.agent_reasoning = data["agent_reasoning"]
+                    st.session_state.live_feed = data.get("live_feed", [])
+                    st.toast("✅ Scenario complete!")
+                    st.rerun()
+            except Exception as e:
+                st.toast(f"⚠ Scenario error: {e}")
 
     st.markdown("---")
     st.markdown('<div class="section-hdr">🔥 Live Simulation</div>', unsafe_allow_html=True)
@@ -249,12 +282,18 @@ with st.sidebar:
             st.session_state.auto_mode = True
             st.session_state.sim_index = 0
             st.rerun()
+
     st.markdown("---")
-    st.markdown('<div class="section-hdr">System Info</div>', unsafe_allow_html=True)
-    st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8E9BB5;line-height:1.8;">
-    Agents: 4 (Triage/Fusion/Dispatch/Strategy)<br>
-    Resources: {len(st.session_state.resources)} units<br>
-    Coverage: Delhi NCR<br>
+    # Stats box
+    n_critical = sum(1 for i in st.session_state.incidents if i.get("severity") == "CRITICAL")
+    n_deployed = sum(1 for r in st.session_state.resources if r.get("status") == "DISPATCHED")
+    util_pct = int(n_deployed / max(len(st.session_state.resources), 1) * 100)
+    util_color = "#FF2D55" if util_pct >= 75 else "#FF9500" if util_pct >= 50 else "#30D158"
+    st.markdown(f"""<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8E9BB5;line-height:2.0;">
+    Agents: Triage / Fusion / Dispatch / Strategy<br>
+    Resources: {len(st.session_state.resources)} units ({n_deployed} deployed)<br>
+    Utilization: <span style="color:{util_color};font-weight:700;">{util_pct}%</span><br>
+    CRITICAL active: <span style="color:#FF2D55;">{n_critical}</span><br>
     API: {st.session_state.base_url}<br>
     Last sync: {now_ist.strftime("%H:%M:%S")} IST
     </div>""", unsafe_allow_html=True)
@@ -276,10 +315,15 @@ with col_left:
         inc_desc = inc.get("description", "")[:80]
         units_list = inc.get("units", [])
         units_str = ", ".join(units_list) if units_list else "Pending"
+        calls_merged = inc.get("calls_merged", 1)
+        merged_badge = f'<span style="font-family:JetBrains Mono,monospace;font-size:9px;background:rgba(0,212,255,0.15);color:#00D4FF;border:1px solid rgba(0,212,255,0.3);border-radius:8px;padding:1px 6px;">{calls_merged} calls</span>' if calls_merged > 1 else ""
+        escalated_badge = '<span style="font-family:JetBrains Mono,monospace;font-size:9px;background:rgba(255,149,0,0.2);color:#FF9500;border:1px solid rgba(255,149,0,0.4);border-radius:8px;padding:1px 6px;">⬆ ESCALATED</span>' if inc.get("escalated") else ""
+        rerouted_units = [d for d in st.session_state.dispatch_log if (d.get("incident") == inc["id"] or d.get("incident_id") == inc["id"]) and "REROUTED" in d.get("status","")]
+        reroute_badge = '<span style="font-family:JetBrains Mono,monospace;font-size:9px;background:rgba(255,45,85,0.2);color:#FF2D55;border:1px solid rgba(255,45,85,0.4);border-radius:8px;padding:1px 6px;">🔄 REROUTED</span>' if rerouted_units else ""
         st.markdown(f"""<div class="incident-card {sev_class}" style="{border_extra}">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
         <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#00D4FF;">{inc['id']}</span>
-        {sev_badge(inc.get('severity','LOW'))}
+        <div style="display:flex;gap:4px;align-items:center;">{merged_badge}{escalated_badge}{reroute_badge}{sev_badge(inc.get('severity','LOW'))}</div>
         </div>
         <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:4px;">{type_icon(inc.get('type',''))} {inc.get('type','')} — {inc.get('location','')}</div>
         <div style="font-size:11px;color:#8E9BB5;margin-bottom:4px;">{inc_desc}</div>
@@ -404,32 +448,48 @@ with col_right:
 
 # ── BOTTOM TABS ──
 st.markdown("---")
-tab1, tab2, tab3 = st.tabs(["📋 Dispatch Log", "🧠 Agent Reasoning", "📞 Raw Transcripts"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Dispatch Log", "🧠 Agent Reasoning", "📞 Raw Transcripts", "⚠️ Alerts"])
 
 with tab1:
     sel_filter = st.session_state.selected_incident
     if st.session_state.dispatch_log:
+        display_log = st.session_state.dispatch_log
         if sel_filter:
-            filtered = [d for d in st.session_state.dispatch_log if d.get("incident") == sel_filter or d.get("incident_id") == sel_filter]
+            filtered = [d for d in display_log if d.get("incident") == sel_filter or d.get("incident_id") == sel_filter]
             if filtered:
                 st.markdown(f'<div style="font-size:11px;color:#00D4FF;margin-bottom:6px;">Showing dispatches for {sel_filter}</div>', unsafe_allow_html=True)
-                df = pd.DataFrame(filtered)
+                display_log = filtered
             else:
-                st.info(f"No dispatch entries for {sel_filter}")
-                df = pd.DataFrame(st.session_state.dispatch_log)
-        else:
-            df = pd.DataFrame(st.session_state.dispatch_log)
-        df.columns = [c.upper() for c in df.columns]
+                st.info(f"No dispatch entries for {sel_filter} — showing all")
+        # Highlight rerouted entries
+        rerouted_count = sum(1 for d in display_log if "REROUTED" in d.get("status", ""))
+        if rerouted_count:
+            st.markdown(f'<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:#FF2D55;margin-bottom:6px;">🔄 {rerouted_count} dynamic reroute(s) in log</div>', unsafe_allow_html=True)
+        df = pd.DataFrame(display_log)
+        # Keep only key columns
+        show_cols = [c for c in ["time","incident","unit","severity","route","eta","status","rerouted_from"] if c in df.columns]
+        df = df[show_cols]
+        df.columns = [c.upper().replace("_"," ") for c in df.columns]
         st.dataframe(df, use_container_width=True, hide_index=True, height=280)
+    else:
+        st.info("No dispatch activity yet.")
 
 with tab2:
-    for agent, reasoning in st.session_state.agent_reasoning.items():
-        icon = {"Triage Agent": "🔍", "Fusion Agent": "🔗", "Dispatch Agent": "🚀", "Strategy Agent": "🧠"}.get(agent, "⚙️")
-        with st.expander(f"{icon} {agent}", expanded=(agent == "Triage Agent")):
+    agent_order = ["Triage Agent", "Fusion Agent", "Dispatch Agent", "Strategy Agent"]
+    icons = {"Triage Agent": "🔍", "Fusion Agent": "🔗", "Dispatch Agent": "🚀", "Strategy Agent": "🧠"}
+    for agent in agent_order:
+        reasoning = st.session_state.agent_reasoning.get(agent, "")
+        if not reasoning:
+            continue
+        icon = icons.get(agent, "⚙️")
+        expanded = agent in ("Dispatch Agent", "Strategy Agent")
+        with st.expander(f"{icon} {agent}", expanded=expanded):
             st.markdown(f'<div class="terminal-box">{reasoning}</div>', unsafe_allow_html=True)
 
 with tab3:
-    for t in st.session_state.transcripts:
+    if not st.session_state.transcripts:
+        st.info("No transcripts yet.")
+    for t in reversed(st.session_state.transcripts[-10:]):  # show last 10, newest first
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(f"<div style='font-size:11px;color:#8E9BB5;margin-bottom:4px;'>ORIGINAL — {t['incident_id']}</div>", unsafe_allow_html=True)
@@ -438,6 +498,21 @@ with tab3:
             st.markdown(f"<div style='font-size:11px;color:#8E9BB5;margin-bottom:4px;'>PROCESSED OUTPUT</div>", unsafe_allow_html=True)
             st.markdown(f'<div class="transcript-box"><span class="transcript-proc">{t["processed"]}</span></div>', unsafe_allow_html=True)
         st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+with tab4:
+    alerts = st.session_state.agent_reasoning.get("Strategy Agent", "")
+    # Also show any alerts from live feed
+    critical_alerts = [e for e in st.session_state.live_feed if "⚠️" in e or "REROUTE" in e or "ESCALAT" in e or "NO AVAILABLE" in e]
+    if critical_alerts:
+        st.markdown('<div class="section-hdr">🚨 System Alerts</div>', unsafe_allow_html=True)
+        for alert in critical_alerts[:10]:
+            color = "#FF2D55" if "ESCALAT" in alert or "NO AVAILABLE" in alert or "REROUTE" in alert else "#FF9500"
+            st.markdown(f'<div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{color};background:rgba(255,45,85,0.05);border:1px solid {color}33;border-radius:4px;padding:8px;margin-bottom:6px;">{alert}</div>', unsafe_allow_html=True)
+    if alerts:
+        st.markdown('<div class="section-hdr" style="margin-top:12px;">🧠 Strategy Agent Assessment</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="terminal-box">{alerts}</div>', unsafe_allow_html=True)
+    if not critical_alerts and not alerts:
+        st.info("No alerts. System operating normally.")
 
 # ── Auto-refresh + Live Simulation ──
 try:
@@ -452,35 +527,36 @@ except ImportError:
 # ── Live Simulation Logic ──
 if st.session_state.auto_mode and st.session_state.backend_online:
     try:
-        # Fetch mock calls from backend
-        mock_resp = requests.get(f"{st.session_state.base_url}/mock-calls", timeout=2)
-        if mock_resp.status_code == 200:
-            mock_calls = mock_resp.json().get("calls", [])
-            if mock_calls:
-                idx = st.session_state.sim_index % len(mock_calls)
-                call = mock_calls[idx]
-                st.session_state.sim_index = idx + 1
+        mock_calls_cache = getattr(st.session_state, "_mock_calls_cache", None)
+        if mock_calls_cache is None:
+            mock_resp = requests.get(f"{st.session_state.base_url}/mock-calls", timeout=2)
+            if mock_resp.status_code == 200:
+                mock_calls_cache = mock_resp.json().get("calls", [])
+                st.session_state._mock_calls_cache = mock_calls_cache
 
-                r = requests.post(
-                    f"{st.session_state.base_url}/process-call",
-                    json={"transcript": call},
-                    timeout=30,
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    if data.get("incidents"):
-                        st.session_state.incidents = data["incidents"]
-                    if data.get("dispatch_log"):
-                        st.session_state.dispatch_log = data["dispatch_log"]
-                    if data.get("resources"):
-                        st.session_state.resources = data["resources"]
-                    if data.get("agent_reasoning"):
-                        st.session_state.agent_reasoning = data["agent_reasoning"]
-                    st.session_state.live_feed = data.get("live_feed", [])
-                    st.session_state.transcripts.append({
-                        "original": call,
-                        "processed": f"[SIM] Processed via backend.",
-                        "incident_id": st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
-                    })
+        if mock_calls_cache:
+            idx = st.session_state.sim_index % len(mock_calls_cache)
+            call = mock_calls_cache[idx]
+            st.session_state.sim_index = idx + 1
+
+            r = requests.post(
+                f"{st.session_state.base_url}/process-call",
+                json={"transcript": call},
+                timeout=30,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                st.session_state.incidents = data.get("incidents", st.session_state.incidents)
+                st.session_state.dispatch_log = data.get("dispatch_log", st.session_state.dispatch_log)
+                st.session_state.resources = data.get("resources", st.session_state.resources)
+                if data.get("agent_reasoning"):
+                    st.session_state.agent_reasoning = data["agent_reasoning"]
+                st.session_state.live_feed = data.get("live_feed", [])
+                latest_id = st.session_state.incidents[-1]["id"] if st.session_state.incidents else "N/A"
+                st.session_state.transcripts.append({
+                    "original": f"[SIM {idx+1}] {call[:120]}...",
+                    "processed": f"Auto-dispatched via LangGraph pipeline. Incident: {latest_id}",
+                    "incident_id": latest_id,
+                })
     except Exception:
         pass
