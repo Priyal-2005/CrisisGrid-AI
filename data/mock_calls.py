@@ -1,31 +1,36 @@
-"""Mock emergency call transcripts for CrisisGrid AI.
-"""
-
+"""Mock emergency call transcripts for CrisisGrid AI."""
 
 MOCK_CALLS = [
-    (
-        "Hello 112? Yahan Connaught Place mein ek building mein aag lagi hai! "
-        "Bahut dhuan aa raha hai, log andar phase hue hain. Please jaldi aao, "
-        "fire brigade bhejo! Kuch log injured bhi hain."
-    ),
-    (
-        "Sir please help! Rohini Sector 7 mein ek major accident hua hai. "
-        "Do gaadiyan takra gayi hain, teen log injured hain. Ek aadmi ko "
-        "bahut zyada khoon beh raha hai. Ambulance bhejo jaldi!"
-    ),
-    (
-        "112? Dwarka Sector 12 mein chain snatching hui hai abhi abhi. "
-        "Do ladke bike pe the, ek aunty ka chain cheen ke bhaag gaye. "
-        "Police bhejo please, woh Palam road ki taraf gaye hain."
-    ),
-    (
-        "Hello? Saket mein ek gas leak ho raha hai ek restaurant mein. "
-        "Bahut tez smell aa rahi hai, hum sab bahar aa gaye hain. "
-        "Fire brigade aur ambulance dono bhejo please!"
-    ),
-    (
-        "Sir Lajpat Nagar mein ek building collapse ho gayi hai! "
-        "Kaafi log andar the, cheekh sunaai de rahi hain. Please sab bhejo — "
-        "ambulance, fire brigade, police sab! Bahut serious hai!"
-    ),
+
+    # FIRE — Connaught Place (Hinglish + duplicates)
+    "Hello 112? Yahan Connaught Place mein ek building mein aag lagi hai! Bahut dhuan aa raha hai, log andar phase hue hain!",
+    "Emergency! There is a fire at Connaught Place. Heavy smoke and people are trapped inside. Send fire trucks immediately!",
+    "Bhai CP mein aag lagi hai, pura building smoke se bhar gaya hai, log fas gaye hain upar!",
+
+    # ACCIDENT — Rohini (Hindi + English mix)
+    "Rohini Sector 7 mein bahut bada accident ho gaya hai. Do gaadiyan takra gayi hain, log injured hain. Ambulance bhejo!",
+    "Major accident in Rohini Sector 7. Two vehicles collided, multiple injured. One person bleeding heavily. Send ambulance now!",
+
+    # THEFT — Dwarka (Hindi only)
+    "Dwarka Sector 12 mein abhi chain snatching hui hai. Do ladke bike pe aaye aur chain le gaye. Police bhejo jaldi!",
+
+    # GAS LEAK — Saket (English + panic)
+    "Hello! There is a gas leak in a restaurant in Saket. Strong smell everywhere, people evacuated. Send fire department quickly!",
+    "Please help! Gas leak ho raha hai Saket ke restaurant mein, situation dangerous lag rahi hai!",
+
+    # BUILDING COLLAPSE — Lajpat Nagar (Hindi + Hinglish)
+    "Lajpat Nagar mein ek building gir gayi hai! Log andar fase hue hain, awaaz aa rahi hai, jaldi help bhejo!",
+    "Emergency! Building collapse reported in Lajpat Nagar. Multiple people trapped under debris. Need rescue immediately!",
+
+    # LOOD — ITO (English + Hinglish duplicates)
+    "ITO ke paas paani bhar gaya hai, log road pe phase hue hain, gaadiyaan band ho gayi hain!",
+    "Flooding near ITO. Roads are blocked, vehicles stuck, people stranded. Need rescue support urgently!",
+
+    # MEDICAL — Karol Bagh (Hindi + English)
+    "Karol Bagh mein ek aadmi behosh ho gaya hai, shayad heart attack hai. Ambulance bhejo jaldi!",
+    "Medical emergency in Karol Bagh. A man has collapsed, possibly a heart attack. Not breathing properly. Send ambulance!",
+
+    # EXPLOSION — Industrial Area (English panic)
+    "Explosion reported in industrial area near Rohini. There is fire and smoke, people injured. Send multiple fire units!",
+
 ]
