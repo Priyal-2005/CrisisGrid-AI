@@ -178,10 +178,10 @@ def _build_llm_prompt(
         "Instructions:\n"
         "- Choose the best action under resource constraints\n"
         "- Be concise and practical\n"
-        "- Output 3 parts:\n"
-        "  1. Situation summary\n"
-        "  2. Decision\n"
-        "  3. Reasoning\n\n"
+        "- Output EXACTLY this format:\n"
+        "  Decision: [one-line decision]\n"
+        "  Reasoning: [why this is optimal]\n"
+        "  Action Taken: [concrete action performed]\n\n"
         "Keep response under 5 lines."
     )
 
@@ -315,7 +315,11 @@ def strategy_agent(state: dict) -> dict:
     if not conflicts_detected:
         # No issues — all dispatches are optimal.
         state["agent_reasoning"]["strategy"] = (
-            "All dispatches optimal. No strategic intervention needed."
+            f"Decision: All dispatches optimal — no intervention required.\n"
+            f"Reasoning: {len(incidents)} incident(s) handled, "
+            f"{utilization:.0%} resource utilization within safe limits.\n"
+            f"Action Taken: Monitoring system. Reserved remaining units "
+            f"for potential escalation."
         )
         state["alerts"] = alerts
         return state

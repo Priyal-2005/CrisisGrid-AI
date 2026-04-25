@@ -238,8 +238,11 @@ async def process_call(data: CallRequest):
 
             # Live feed event
             icon = _get_icon(inc.get("incident_type", ""))
+            sev = formatted.get("severity", "MEDIUM")
+            merged = inc.get("duplicate_count", 1)
+            merge_note = f" — {merged} calls merged" if merged > 1 else ""
             new_feed_events.append(
-                f"🚨 {icon} {formatted['type']} detected at {formatted['location']}"
+                f"🚨 {icon} {sev} {formatted['type']} detected at {formatted['location']}{merge_note}"
             )
             for uid in units:
                 entry_for_unit = next(
@@ -257,6 +260,12 @@ async def process_call(data: CallRequest):
                     current_state["dispatch_log"].append(
                         _format_dispatch_entry(entry, display_id)
                     )
+
+        # --- Resource strain check ---
+        total_units = len(current_state["resources"])
+        dispatched_count = sum(1 for u in current_state["resources"].values() if u.get("status") == "DISPATCHED")
+        if total_units > 0 and dispatched_count / total_units > 0.6:
+            new_feed_events.append(f"⚠️ Resource strain: {dispatched_count}/{total_units} units deployed — prioritizing CRITICAL incidents")
 
         # --- Update resources (always take latest from pipeline) ---
         current_state["resources"] = result.get("resources", current_state["resources"])

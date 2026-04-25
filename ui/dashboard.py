@@ -264,7 +264,8 @@ col_left, col_center, col_right = st.columns([1, 2, 1])
 
 # ── LEFT: Incident Feed ──
 with col_left:
-    st.markdown('<div class="section-hdr">🔴 Live Incident Feed</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-hdr">🔴 Real-time Incident Queue</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:9px;color:#30D158;font-family:JetBrains Mono,monospace;margin-bottom:6px;">PRIORITY ENGINE: Critical incidents handled first</div>', unsafe_allow_html=True)
     sev_order = {"CRITICAL": 0, "MEDIUM": 1, "LOW": 2}
     sorted_incidents = sorted(st.session_state.incidents, key=lambda x: sev_order.get(x.get("severity","LOW"), 3))
     for idx, inc in enumerate(sorted_incidents):
@@ -371,6 +372,11 @@ with col_center:
                 df_disp = pd.DataFrame(inc_dispatches)
                 df_disp.columns = [c.upper().replace("_"," ") for c in df_disp.columns]
                 st.dataframe(df_disp, use_container_width=True, hide_index=True, height=150)
+                # Show route text
+                for d in inc_dispatches:
+                    route = d.get("route", d.get("ROUTE", ""))
+                    if route:
+                        st.markdown(f'<div style="font-size:11px;color:#00D4FF;font-family:JetBrains Mono,monospace;margin-top:4px;">🚨 Route: {route}</div>', unsafe_allow_html=True)
         if st.button("✖ Clear Selection", use_container_width=True):
             st.session_state.selected_incident = None
             st.rerun()
@@ -404,7 +410,7 @@ with col_right:
 
 # ── BOTTOM TABS ──
 st.markdown("---")
-tab1, tab2, tab3 = st.tabs(["📋 Dispatch Log", "🧠 Agent Reasoning", "📞 Raw Transcripts"])
+tab1, tab2, tab3 = st.tabs(["📋 Dispatch Log", "🧠 AI Decision Engine", "📞 Raw Transcripts"])
 
 with tab1:
     sel_filter = st.session_state.selected_incident
