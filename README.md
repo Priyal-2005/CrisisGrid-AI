@@ -94,3 +94,7 @@ crisisgrid-ai/
 ├── requirements.txt
 └── README.md
 ```
+
+## 🔗 Deployed Link
+
+https://crisisgrid-ai.streamlit.app/
