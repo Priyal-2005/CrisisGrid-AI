@@ -9,6 +9,7 @@ const config: Config = {
     extend: {
       colors: {
         background: "#0A0C10",
+        foreground: "#FFFFFF",
         surface: "#12151C",
         border: "#1E2D4A",
         primary: "#00D4FF",

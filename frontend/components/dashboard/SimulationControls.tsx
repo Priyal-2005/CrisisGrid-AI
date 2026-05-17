@@ -61,10 +61,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         <button 
           onClick={runScenario}
           disabled={isRunning || isResetting}
-          className="flex items-center justify-center gap-2 bg-high/20 hover:bg-high/30 border border-high text-high rounded-md py-3 font-mono text-xs transition-colors disabled:opacity-50"
+          className={`flex items-center justify-center gap-2 border rounded-md py-3 font-mono text-xs transition-all ${
+            isRunning ? "bg-high/40 border-high text-white animate-pulse shadow-[0_0_15px_rgba(255,107,53,0.5)]" : "bg-high/20 hover:bg-high/30 border-high text-high"
+          } disabled:opacity-80`}
         >
           <Play className="w-4 h-4" />
-          {isRunning ? "RUNNING..." : "RUN AI SCENARIO"}
+          {isRunning ? "SIMULATING INCIDENTS..." : "RUN DEMO SCENARIO"}
         </button>
         
         <button 

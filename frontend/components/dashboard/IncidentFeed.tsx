@@ -50,7 +50,7 @@ export function IncidentFeed() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className={`p-1.5 rounded-md border ${getSeverityColor(incident.severity_score)}`}>
-                    {getIcon(incident.resolved_type || incident.type)}
+                    {getIcon(incident.type)}
                   </div>
                   <span className="font-mono text-sm font-bold text-white">{incident.id}</span>
                 </div>
@@ -60,7 +60,7 @@ export function IncidentFeed() {
               </div>
 
               <div className="text-sm font-medium text-white mb-1">
-                {incident.resolved_type ? incident.resolved_type.replace('_', ' ').toUpperCase() : incident.type.toUpperCase()}
+                {incident.type.toUpperCase()}
               </div>
               <div className="text-xs text-muted mb-2 line-clamp-2">
                 {incident.description}
@@ -72,13 +72,10 @@ export function IncidentFeed() {
                   {incident.location.toUpperCase()}
                 </div>
                 <div className="flex items-center gap-3">
-                  {incident.injured_count > 0 && (
-                    <span className="flex items-center gap-1 text-red-400">
-                      <Users className="w-3 h-3" /> {incident.injured_count}
-                    </span>
-                  )}
                   {incident.calls_merged > 1 && (
-                    <span className="text-primary">{incident.calls_merged} CALLS</span>
+                    <span className="flex items-center gap-1 text-primary bg-primary/20 border border-primary px-2 py-0.5 rounded-sm animate-pulse shadow-[0_0_10px_rgba(0,212,255,0.5)]">
+                      {incident.calls_merged} CALLS MERGED
+                    </span>
                   )}
                 </div>
               </div>

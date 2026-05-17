@@ -2,6 +2,7 @@
 
 import { useSystemStore } from "@/store/systemStore";
 import { useEffect, useState } from "react";
+import 'leaflet/dist/leaflet.css';
 // Dynamic import for react-leaflet to avoid SSR issues
 import dynamic from 'next/dynamic';
 
@@ -26,9 +27,13 @@ const Polyline = dynamic(
   { ssr: false }
 );
 
-// Delhi Coordinates
+// Delhi Coordinates & Constraints
 const CENTER_LAT = 28.6139;
 const CENTER_LNG = 77.2090;
+const DELHI_BOUNDS = [
+  [28.40, 76.85], // South-West
+  [28.85, 77.45]  // North-East
+];
 
 // Hardcoded node positions for visualization
 const NODE_POSITIONS: Record<string, [number, number]> = {
@@ -46,6 +51,42 @@ const NODE_POSITIONS: Record<string, [number, number]> = {
   "gurgaon_border": [28.4595, 77.0266],
 };
 
+// Map backend zones (Title Case or lowercase) to hardcoded Delhi NODE_POSITIONS keys
+const getNormalizedLocationKey = (location: string): string => {
+  if (!location) return "connaught_place";
+  const loc = location.toLowerCase().trim().replace(/[\s_-]+/g, '_');
+  
+  const mapping: Record<string, string> = {
+    'downtown': 'connaught_place',
+    'harbor': 'india_gate',
+    'industrial': 'rohini',
+    'sector7': 'saket',
+    'sector_7': 'saket',
+    'north_grid': 'rohini',
+    'central_park': 'india_gate',
+    'westside': 'dwarka',
+    'port': 'gurgaon_border',
+    'eastside': 'noida_border',
+    'suburbs': 'gurgaon_border',
+    'midtown': 'karol_bagh',
+    'airport': 'airport',
+    // already direct
+    'connaught_place': 'connaught_place',
+    'india_gate': 'india_gate',
+    'aiims': 'aiims',
+    'chandni_chowk': 'chandni_chowk',
+    'lajpat_nagar': 'lajpat_nagar',
+    'dwarka': 'dwarka',
+    'rohini': 'rohini',
+    'karol_bagh': 'karol_bagh',
+    'saket': 'saket',
+    'noida_border': 'noida_border',
+    'gurgaon_border': 'gurgaon_border',
+  };
+
+  return mapping[loc] || loc;
+};
+
 export function MapPanel() {
   const { incidents, resources, dispatch_log } = useSystemStore();
   const [mounted, setMounted] = useState(false);
@@ -58,11 +99,15 @@ export function MapPanel() {
     return <div className="absolute inset-0 flex items-center justify-center text-xs text-muted font-mono">LOADING MAP ENGINE...</div>;
   }
 
-  const getSeverityColor = (severity: string) => {
-    if (severity === 'CRITICAL') return '#FF2D55';
-    if (severity === 'HIGH') return '#FF6B35';
-    if (severity === 'MEDIUM') return '#FF9500';
-    return '#30D158';
+  const getTypeColor = (type: string) => {
+    // Return bright EOC tactical red for all incident dots as requested by the user
+    return '#FF2D55';
+  };
+
+  const getSeverityPulseClass = (severity: string) => {
+    if (severity === 'CRITICAL') return 'animate-pulse-fast';
+    if (severity === 'HIGH') return 'animate-pulse';
+    return '';
   };
 
   const getResourceColor = (type: string) => {
@@ -73,9 +118,13 @@ export function MapPanel() {
 
   return (
     <div className="absolute inset-0 z-0">
-      <MapContainer 
-        center={[CENTER_LAT, CENTER_LNG]} 
-        zoom={11} 
+      <MapContainer
+        center={[CENTER_LAT, CENTER_LNG]}
+        zoom={11}
+        minZoom={10}
+        maxZoom={15}
+        maxBounds={DELHI_BOUNDS as any}
+        maxBoundsViscosity={1.0}
         style={{ height: '100%', width: '100%', background: '#0A0C10' }}
         zoomControl={false}
       >
@@ -88,17 +137,21 @@ export function MapPanel() {
         {dispatch_log.slice(0, 5).map((log, i) => {
           const unit = resources.find(r => r.id === log.unit);
           const incident = incidents.find(inc => inc.id === log.incident);
-          
-          if (unit && incident && NODE_POSITIONS[unit.location] && NODE_POSITIONS[incident.location]) {
+
+          const unitKey = unit ? getNormalizedLocationKey(unit.location) : "";
+          const incKey = incident ? getNormalizedLocationKey(incident.location) : "";
+
+          if (unit && incident && NODE_POSITIONS[unitKey] && NODE_POSITIONS[incKey]) {
             return (
               <Polyline
                 key={`route-${i}`}
-                positions={[NODE_POSITIONS[unit.location], NODE_POSITIONS[incident.location]]}
-                pathOptions={{ 
-                  color: log.status.includes('REROUTED') ? '#FF2D55' : getResourceColor(unit.type), 
-                  weight: 2, 
-                  opacity: 0.6,
-                  dashArray: '5, 5'
+                positions={[NODE_POSITIONS[unitKey], NODE_POSITIONS[incKey]]}
+                pathOptions={{
+                  color: log.status.includes('REROUTED') ? '#FF2D55' : getResourceColor(unit.type),
+                  weight: 3,
+                  opacity: 0.8,
+                  dashArray: '10, 10',
+                  className: 'animated-route'
                 }}
               />
             );
@@ -108,26 +161,31 @@ export function MapPanel() {
 
         {/* Incidents Heatmap/Markers */}
         {incidents.map((incident) => {
-          const pos = NODE_POSITIONS[incident.location];
+          const locKey = getNormalizedLocationKey(incident.location);
+          const pos = NODE_POSITIONS[locKey];
           if (!pos) return null;
 
           return (
             <CircleMarker
               key={incident.id}
               center={pos}
-              radius={incident.severity === 'CRITICAL' ? 12 : (incident.severity === 'HIGH' ? 8 : 5)}
+              radius={incident.severity === 'CRITICAL' ? 14 : (incident.severity === 'HIGH' ? 10 : 7)}
               pathOptions={{
-                color: getSeverityColor(incident.severity),
-                fillColor: getSeverityColor(incident.severity),
-                fillOpacity: 0.5,
+                color: getTypeColor(incident.type),
+                fillColor: getTypeColor(incident.type),
+                fillOpacity: incident.severity === 'CRITICAL' ? 0.8 : 0.5,
                 weight: 2,
+                className: getSeverityPulseClass(incident.severity)
               }}
             >
-              <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                <div className="font-mono text-xs">
-                  <strong>{incident.id}</strong><br/>
-                  {incident.type}<br/>
-                  Severity: {incident.severity}
+              <Tooltip direction="top" offset={[0, -10]} opacity={1} className="bg-surface border-border text-white font-mono text-xs">
+                <div className="p-1">
+                  <strong className="text-critical">{incident.id}</strong><br />
+                  <span className="text-white font-bold">{incident.type}</span><br />
+                  <span className="text-muted">Severity: </span>
+                  <span className={incident.severity === 'CRITICAL' ? 'text-critical font-bold' : incident.severity === 'HIGH' ? 'text-high font-bold' : 'text-primary'}>
+                    {incident.severity}
+                  </span>
                 </div>
               </Tooltip>
             </CircleMarker>
@@ -136,7 +194,8 @@ export function MapPanel() {
 
         {/* Resources Markers */}
         {resources.map((resource) => {
-          const pos = NODE_POSITIONS[resource.location];
+          const locKey = getNormalizedLocationKey(resource.location);
+          const pos = NODE_POSITIONS[locKey];
           if (!pos) return null;
 
           return (
@@ -153,8 +212,8 @@ export function MapPanel() {
             >
               <Tooltip direction="bottom" offset={[0, 10]} opacity={1}>
                 <div className="font-mono text-xs">
-                  <strong>{resource.id}</strong><br/>
-                  {resource.type}<br/>
+                  <strong>{resource.id}</strong><br />
+                  {resource.type}<br />
                   Status: {resource.status}
                 </div>
               </Tooltip>
@@ -163,7 +222,7 @@ export function MapPanel() {
         })}
 
       </MapContainer>
-      
+
       {/* Overlay gradient to blend map edges into the dark dashboard */}
       <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_40px_rgba(10,12,16,1)]"></div>
     </div>

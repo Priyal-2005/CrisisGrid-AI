@@ -64,3 +64,18 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #2A3F6A;
 }
+
+/* Animated Map Routes */
+.animated-route {
+  animation: route-dash 2s linear infinite;
+}
+
+@keyframes route-dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.animate-pulse-fast {
+  animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

@@ -3,6 +3,7 @@
 import { useSystemStore } from "@/store/systemStore";
 import { useEffect, useRef } from "react";
 import { BrainCircuit, Filter, Navigation, Route } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function ReasoningPanel() {
   const { agent_reasoning } = useSystemStore();
@@ -22,7 +23,7 @@ export function ReasoningPanel() {
   ];
 
   return (
-    <div 
+    <div
       ref={scrollRef}
       className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-[11px]"
     >
@@ -31,22 +32,29 @@ export function ReasoningPanel() {
           Awaiting LLM response...
         </div>
       ) : (
-        agents.map((agent) => {
-          const reasoning = agent_reasoning[agent.name];
-          if (!reasoning) return null;
+        <AnimatePresence>
+          {agents.map((agent) => {
+            const reasoning = agent_reasoning[agent.name];
+            if (!reasoning) return null;
 
-          return (
-            <div key={agent.name} className="space-y-2">
-              <div className="flex items-center gap-2 text-white/80">
-                {agent.icon}
-                <span className="font-semibold">{agent.name.toUpperCase()}</span>
-              </div>
-              <div className="pl-6 text-muted border-l border-border/50 whitespace-pre-wrap leading-relaxed">
-                {reasoning}
-              </div>
-            </div>
-          );
-        })
+            return (
+              <motion.div
+                key={agent.name}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 bg-surface/40 border border-border/50 rounded-lg p-3 shadow-lg"
+              >
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border/50">
+                  {agent.icon}
+                  <span className="font-bold tracking-wider text-white/90 text-[10px]">{agent.name.toUpperCase()}</span>
+                </div>
+                <div className="text-muted whitespace-pre-wrap leading-relaxed text-[11px] font-mono">
+                  {reasoning}
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       )}
     </div>
   );
