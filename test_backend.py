@@ -32,9 +32,9 @@ def run_tests():
     logger.info(f"✅ Process call passed. Incident created: {state['incidents'][0]['type']}")
     
     # 3. Traffic endpoint
-    res = client.get("/api/v1/system/traffic")
+    res = client.get("/api/v1/traffic")
     assert res.status_code == 200, "Traffic endpoint failed"
-    assert "conditions" in res.json()
+    assert "affected_edges" in res.json()
     logger.info("✅ Traffic system passed")
     
     # 4. Reset endpoint
