@@ -92,3 +92,7 @@ curl -X POST "http://localhost:8000/api/v1/incidents/process-call" \
      -H "Content-Type: application/json" \
      -d '{"transcript": "There is a massive fire at the industrial plant, chemical smell everywhere!"}'
 ```
+
+## 🔗 Deployed Link
+
+https://crisisgrid-ai.streamlit.app/
