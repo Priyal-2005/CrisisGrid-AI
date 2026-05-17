@@ -8,7 +8,8 @@ export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
   const { 
     setConnectionStatus, 
-    setInitialState, 
+    setInitialState,
+    resetState,
     addIncident, 
     updateIncident, 
     updateResources, 
@@ -62,8 +63,10 @@ export function useWebSocket() {
               break;
             case 'system':
               if (payload.event === 'system_reset') {
-                // Let the next state_snapshot handle the actual reset data
-                console.log('System reset triggered');
+                // Immediately clear all frontend state
+                // The subsequent state_snapshot will repopulate with clean data
+                resetState();
+                console.log('System reset — frontend state cleared');
               }
               break;
             default:
@@ -98,6 +101,7 @@ export function useWebSocket() {
   }, [
     setConnectionStatus,
     setInitialState,
+    resetState,
     addIncident,
     updateResources,
     addDispatch,

@@ -34,40 +34,42 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     background-color: #0A0C10;
+    overflow: hidden;
   }
 }
 
-/* Glassmorphism Utilities */
+/* ─── Glassmorphism ─── */
 .glass-panel {
-  background: rgba(18, 21, 28, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(30, 45, 74, 0.5);
+  background: rgba(18, 21, 28, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(30, 45, 74, 0.4);
 }
 
+/* ─── Incident severity glow ─── */
 .critical-glow {
-  box-shadow: 0 0 15px rgba(255, 45, 85, 0.2);
+  box-shadow: 0 0 20px rgba(255, 45, 85, 0.15), inset 0 0 20px rgba(255, 45, 85, 0.05);
 }
 
-/* Custom Scrollbar for dark theme */
+/* ─── Custom Scrollbar ─── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E2D4A;
-  border-radius: 3px;
+  background: rgba(30, 45, 74, 0.6);
+  border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2A3F6A;
+  background: rgba(42, 63, 106, 0.8);
 }
 
-/* Animated Map Routes */
+/* ─── Animated Map Routes ─── */
 .animated-route {
-  animation: route-dash 2s linear infinite;
+  animation: route-dash 1.5s linear infinite;
 }
 
 @keyframes route-dash {
@@ -76,6 +78,39 @@
   }
 }
 
+/* ─── Pulse Animations ─── */
 .animate-pulse-fast {
-  animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: pulse-fast 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-fast {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ─── Leaflet overrides for dark theme ─── */
+.leaflet-container {
+  background: #0A0C10 !important;
+  font-family: inherit !important;
+}
+
+.leaflet-tooltip {
+  background: rgba(18, 21, 28, 0.95) !important;
+  border: 1px solid rgba(30, 45, 74, 0.6) !important;
+  border-radius: 4px !important;
+  color: white !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+  padding: 4px 8px !important;
+}
+
+.leaflet-tooltip-top::before {
+  border-top-color: rgba(30, 45, 74, 0.6) !important;
+}
+.leaflet-tooltip-bottom::before {
+  border-bottom-color: rgba(30, 45, 74, 0.6) !important;
+}
+
+/* Hide Leaflet attribution for cleaner look */
+.leaflet-control-attribution {
+  display: none !important;
 }
