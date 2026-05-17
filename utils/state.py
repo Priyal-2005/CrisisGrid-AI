@@ -16,3 +16,9 @@ class State(TypedDict):
     incident: Dict[str, Any]
     city_graph: Any
     status: str
+
+    # --- Phase 1 enhancements ---
+    # Severity scoring context passed between agents
+    severity_context: Dict[str, Any]
+    # Zone risk profile for the current primary incident
+    zone_risk_profile: Dict[str, Any]

@@ -61,7 +61,9 @@ def run_pipeline(
         "alerts": [],
         "incident": {},
         "city_graph": city_graph,
-        "status": "initialized"
+        "status": "initialized",
+        "severity_context": {},
+        "zone_risk_profile": {},
     }
 
     return compiled_graph.invoke(initial_state)
@@ -94,7 +96,9 @@ def run_pipeline_stateful(state: dict, transcript: str) -> dict:
         "alerts": [],
         "incident": {},
         "city_graph": state.get("city_graph"),
-        "status": "processing"
+        "status": "processing",
+        "severity_context": {},
+        "zone_risk_profile": {},
     }
 
     return compiled_graph.invoke(call_state)

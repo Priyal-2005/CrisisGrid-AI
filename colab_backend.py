@@ -76,6 +76,10 @@ logger.info("Resources: %d units", len(resources))
 TYPE_ICON = {
     "fire": "🔥", "flood": "🌊", "earthquake": "🏚️",
     "accident": "💥", "medical": "🚑", "unknown": "⚠️",
+    "explosion": "💣", "chemical_fire": "☣️", "industrial_fire": "🏭",
+    "gas_leak": "⛽", "building_collapse": "🏗️", "chemical_spill": "☢️",
+    "chemical_explosion": "☣️", "industrial_explosion": "🏭",
+    "gas_explosion": "⛽", "toxic_release": "☠️",
 }
 
 def _get_icon(incident_type: str) -> str:
@@ -90,8 +94,13 @@ def _format_incident(raw_inc: dict, display_id: str, units: list, ts: str) -> di
     inc_type = raw_inc.get("incident_type", raw_inc.get("type", "Unknown"))
     location = raw_inc.get("location", "Unknown")
     severity = raw_inc.get("severity", "MEDIUM").upper()
+    severity_score = raw_inc.get("severity_score", 0)
     calls_merged = raw_inc.get("duplicate_count", raw_inc.get("calls_merged", 1))
     escalation = raw_inc.get("escalation_reason")
+    resolved_type = raw_inc.get("resolved_type", inc_type)
+    zone_risk = raw_inc.get("zone_risk", {})
+    required_resources = raw_inc.get("required_resources", {})
+    severity_explanation = raw_inc.get("severity_explanation", "")
 
     desc = raw_inc.get("summary", raw_inc.get("description",
            f"{inc_type.title()} reported at {location}"))
@@ -102,8 +111,10 @@ def _format_incident(raw_inc: dict, display_id: str, units: list, ts: str) -> di
         "id": display_id,
         "internal_id": raw_inc.get("id", raw_inc.get("master_incident_id", "")),
         "type": inc_type.title(),
+        "resolved_type": resolved_type,
         "location": location.replace("_", " ").title(),
         "severity": severity,
+        "severity_score": severity_score,
         "status": "ACTIVE",
         "units": units,
         "time": ts,
@@ -111,9 +122,15 @@ def _format_incident(raw_inc: dict, display_id: str, units: list, ts: str) -> di
         "description": desc,
         "calls_merged": calls_merged,
         "injured_count": raw_inc.get("injured_count", 0),
+        "trapped_count": raw_inc.get("trapped_count", 0),
         "resources_needed": raw_inc.get("resources_needed", []),
+        "required_resources": required_resources,
         "confidence_score": raw_inc.get("confidence_score", 50),
         "escalated": escalation is not None,
+        "severity_explanation": severity_explanation,
+        "zone_risk": zone_risk,
+        "has_chemical_hazard": raw_inc.get("has_chemical_hazard", False),
+        "has_spread_risk": raw_inc.get("has_spread_risk", False),
     }
 
 
@@ -352,14 +369,15 @@ async def _process_transcript(transcript: str) -> dict:
         current_state["incidents"].append(formatted)
         current_state["_raw_incidents"].append(inc)
 
-        icon = _get_icon(inc.get("incident_type", "unknown"))
+        icon = _get_icon(inc.get("resolved_type", inc.get("incident_type", "unknown")))
         severity = inc.get("severity", "MEDIUM").upper()
+        severity_score = inc.get("severity_score", 0)
         calls_merged = inc.get("duplicate_count", 1)
         escalated = inc.get("escalation_reason") is not None
 
         feed_msg = (
             f"🚨 {icon} {formatted['type']} at {formatted['location']} "
-            f"[{severity}]"
+            f"[{severity} • score {severity_score}/100]"
             + (f" — {calls_merged} calls merged" if calls_merged > 1 else "")
             + (" ⬆️ AUTO-ESCALATED" if escalated else "")
         )
@@ -408,6 +426,12 @@ async def _process_transcript(transcript: str) -> dict:
     pipeline_resources = result.get("resources", {})
     if pipeline_resources:
         current_state["resources"] = pipeline_resources
+
+    # Update city graph with current incident conditions for dynamic routing
+    try:
+        city_graph.update_conditions(active_incidents=current_state["incidents"])
+    except (AttributeError, Exception):
+        pass  # CityGraph may not support dynamic conditions yet
 
     # Update reasoning
     raw_reasoning = result.get("agent_reasoning", {})
@@ -585,6 +609,18 @@ def _build_response() -> dict:
                 sum(1 for u in current_state["resources"].values()
                     if u.get("status") == "DISPATCHED")
                 / max(len(current_state["resources"]), 1), 2
+            ),
+            "avg_severity_score": round(
+                sum(inc.get("severity_score", 0) for inc in current_state["incidents"])
+                / max(len(current_state["incidents"]), 1), 1
+            ),
+            "critical_count": sum(
+                1 for inc in current_state["incidents"]
+                if inc.get("severity", "").upper() == "CRITICAL"
+            ),
+            "high_count": sum(
+                1 for inc in current_state["incidents"]
+                if inc.get("severity", "").upper() == "HIGH"
             ),
         }
     }
