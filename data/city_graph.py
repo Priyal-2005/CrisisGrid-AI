@@ -10,7 +10,6 @@ The base graph structure is PRESERVED — only ETA calculations are enhanced.
 """
 
 import networkx as nx
-import plotly.graph_objects as go
 from data.zone_profiles import get_zone_profile
 
 
@@ -226,6 +225,13 @@ def create_city_graph():
 
 def get_graph_figure(G, active_routes=None, incident_nodes=None):
     """Generates a Plotly figure of the city graph, optionally highlighting incidents and routes."""
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        raise ImportError(
+            "Plotly is required to generate the city graph figure. "
+            "Please install it using 'pip install plotly'."
+        )
     pos = nx.get_node_attributes(G, 'pos')
 
     edge_x = []
