@@ -8,11 +8,13 @@ export function SimulationControls() {
   const [isResetting, setIsResetting] = useState(false);
   const [statusText, setStatusText] = useState("SYSTEM READY");
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
   const runScenario = async () => {
     setIsRunning(true);
     setStatusText("EXECUTING TEST SCENARIO...");
     try {
-      const res = await fetch("http://localhost:8000/api/v1/simulation/scenario", {
+      const res = await fetch(`${API_URL}/api/v1/simulation/scenario`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ delay: 1.5 })
@@ -33,7 +35,7 @@ export function SimulationControls() {
     setIsResetting(true);
     setStatusText("RESETTING SYSTEM STATE...");
     try {
-      const res = await fetch("http://localhost:8000/api/v1/simulation/reset", {
+      const res = await fetch(`${API_URL}/api/v1/simulation/reset`, {
         method: "POST"
       });
       if (res.ok) {

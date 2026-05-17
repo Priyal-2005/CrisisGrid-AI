@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useSystemStore } from '../store/systemStore';
 
-const WS_URL = 'ws://localhost:8000/ws';
+// Use environment variable for production WebSocket URL, fallback to localhost for dev
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws';
 
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
